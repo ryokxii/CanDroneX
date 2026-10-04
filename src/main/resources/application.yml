@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: candronex
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/candronex}
+    username: ${SPRING_DATASOURCE_USERNAME:candronex}
+    password: ${SPRING_DATASOURCE_PASSWORD:candronex}
+
+  jpa:
+    # Seules les migrations Flyway créent le schéma (ADR-003).
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    com.candronex: DEBUG
+
+# Jetons d'accès OAuth 2.0 (client_credentials)
+candronex:
+  security:
+    oauth2:
+      issuer: ${CANDRONEX_OAUTH2_ISSUER:http://localhost:8080}
+      audience: candronex-api
+      # Courte : un jeton émis ne se révoque pas.
+      access-token-ttl: ${CANDRONEX_OAUTH2_ACCESS_TOKEN_TTL:PT15M}

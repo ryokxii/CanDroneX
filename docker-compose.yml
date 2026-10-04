@@ -1,0 +1,54 @@
+# Démarrage : docker compose up --build
+
+services:
+
+  db:
+    image: postgres:16
+    container_name: candronex-db
+    environment:
+      POSTGRES_DB: candronex
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - candronex-data:/var/lib/postgresql/data
+    # 5432 non publié : base joignable seulement depuis candronex-net.
+    networks:
+      - candronex-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d candronex"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build: .
+    container_name: candronex-app
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/candronex
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SERVER_PORT: 8080
+      # OAuth 2.0 : URL publique de l'API (revendication iss) et durée de vie des jetons.
+      CANDRONEX_OAUTH2_ISSUER: ${CANDRONEX_OAUTH2_ISSUER:-http://localhost:8080}
+      CANDRONEX_OAUTH2_ACCESS_TOKEN_TTL: ${CANDRONEX_OAUTH2_ACCESS_TOKEN_TTL:-PT15M}
+    ports:
+      - "8080:8080"
+    # Flyway doit attendre que PostgreSQL accepte les connexions.
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - candronex-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+volumes:
+  candronex-data:
+
+networks:
+  candronex-net:
+    driver: bridge

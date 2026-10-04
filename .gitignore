@@ -1,0 +1,13 @@
+target/
+.env
+*.class
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Surcharge de développement, non livrée
+docker-compose.override.yml
