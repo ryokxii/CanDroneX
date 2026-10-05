@@ -74,7 +74,7 @@ class TokenController {
                 .body(body);
     }
 
-    // Erreurs au format RFC 6749 §5.2 ; ces gestionnaires priment sur ProblemDetailsHandler.
+    // Erreurs au format OAuth 2.0 ; ces gestionnaires priment sur ProblemDetailsHandler.
 
     @ExceptionHandler(InvalidScopeException.class)
     ResponseEntity<TokenErrorResponse> onInvalidScope(InvalidScopeException exception) {
@@ -107,7 +107,7 @@ class TokenController {
                 .body(new TokenErrorResponse(code, description));
     }
 
-    /** Le secret ne doit jamais transiter dans l'URL (RFC 6749 §2.3.1). */
+    /** Le secret ne doit jamais transiter dans l'URL. */
     private static void rejectSecretsInQueryString(HttpServletRequest request) {
         String query = request.getQueryString();
         if (query != null && query.contains("client_secret")) {

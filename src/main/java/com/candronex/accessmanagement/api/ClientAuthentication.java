@@ -4,7 +4,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
-/** Identifiants du client (RFC 6749 §2.3.1) : en-tête Basic ou corps du formulaire, jamais les deux. */
+/** Identifiants du client : en-tête Basic ou corps du formulaire, jamais les deux. */
 record ClientAuthentication(String clientId, String clientSecret, boolean viaBasic) {
 
     private static final String BASIC_PREFIX = "Basic ";
@@ -36,7 +36,7 @@ record ClientAuthentication(String clientId, String clientSecret, boolean viaBas
             if (separator <= 0) {
                 throw malformedBasic();
             }
-            // RFC 6749 §2.3.1 : chaque partie est form-urlencoded avant le Base64.
+            // Chaque partie est form-urlencoded avant le Base64.
             String clientId = URLDecoder.decode(decoded.substring(0, separator), StandardCharsets.UTF_8);
             String secret = URLDecoder.decode(decoded.substring(separator + 1), StandardCharsets.UTF_8);
             return new ClientAuthentication(clientId, secret, true);

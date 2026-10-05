@@ -10,7 +10,7 @@ import java.util.Base64;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Extraction des identifiants du client, RFC 6749 §2.3.1. */
+/** Extraction des identifiants du client. */
 class ClientAuthenticationTest {
 
     private static String basic(String id, String secret) {

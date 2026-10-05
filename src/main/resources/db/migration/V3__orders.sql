@@ -14,7 +14,7 @@ CREATE TABLE orders.service_orders (
 
     CONSTRAINT pk_service_orders PRIMARY KEY (order_id),
 
-    -- §8.2 : traite le rejeu simultané, que la lecture en début
+    -- Traite le rejeu simultané, que la lecture en début
     -- de transaction ne peut pas intercepter.
     CONSTRAINT uq_orders_client_idempotency UNIQUE (client_id, idempotency_key),
 

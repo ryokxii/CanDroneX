@@ -1,5 +1,5 @@
 -- Module DroneRegistration — UC-02
--- Un schéma par module ; aucune clé étrangère ne traverse une frontière (§8.1).
+-- Un schéma par module ; aucune clé étrangère ne traverse une frontière.
 
 CREATE SCHEMA IF NOT EXISTS drone;
 
