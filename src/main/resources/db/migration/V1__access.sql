@@ -1,6 +1,4 @@
 -- Module AccessManagement — le client B2B
--- UC-01 est hors périmètre : aucun compte n'est créé par l'API en Phase 1.
--- Le client de démonstration est amorcé par la migration V4.
 
 CREATE SCHEMA IF NOT EXISTS access;
 

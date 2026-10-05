@@ -1,6 +1,4 @@
 -- Module OrderManagement — UC-04
--- Le schéma est nommé « orders » et non « order » : ORDER est un mot
--- réservé SQL, qui imposerait des guillemets dans chaque requête.
 
 CREATE SCHEMA IF NOT EXISTS orders;
 
