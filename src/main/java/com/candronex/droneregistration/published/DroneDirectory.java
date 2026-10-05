@@ -1,6 +1,7 @@
 package com.candronex.droneregistration.published;
 
 import java.util.Optional;
+import java.util.UUID;
 
 /** Interface publiée par DroneRegistration. */
 public interface DroneDirectory {
@@ -10,5 +11,5 @@ public interface DroneDirectory {
      *         Les deux cas sont volontairement indiscernables, pour ne pas
      *         révéler l'existence de la ressource d'un autre client (404).
      */
-    Optional<DroneSummary> findForClient(String droneId, String clientId);
+    Optional<DroneSummary> findForClient(UUID droneId, UUID clientId);
 }

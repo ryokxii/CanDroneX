@@ -1,11 +1,11 @@
 package com.candronex.droneregistration.api;
 
+import com.candronex.common.security.CurrentClientId;
 import com.candronex.droneregistration.application.DroneView;
 import com.candronex.droneregistration.application.RegisterDroneCommand;
 import com.candronex.droneregistration.application.RegisterDroneService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
 import java.util.List;
+import java.util.UUID;
 
 /** Adaptateur entrant du module DroneRegistration. */
 @RestController
@@ -30,11 +31,11 @@ class DroneController {
 
     @PostMapping
     ResponseEntity<DroneResponse> register(
-            @AuthenticationPrincipal(expression = "subject") String clientId,
+            @CurrentClientId UUID clientId,
             @Valid @RequestBody DroneRequest request) {
 
         DroneView registered = drones.register(new RegisterDroneCommand(
-                clientId, request.droneId(), request.imsi(), request.simType()));
+                clientId, request.imsi(), request.simType()));
 
         return ResponseEntity
                 .created(URI.create("/api/v1/drones/" + registered.droneId()))
@@ -42,7 +43,7 @@ class DroneController {
     }
 
     @GetMapping
-    List<DroneResponse> listMine(@AuthenticationPrincipal(expression = "subject") String clientId) {
+    List<DroneResponse> listMine(@CurrentClientId UUID clientId) {
         return drones.listForClient(clientId).stream()
                 .map(DroneResponse::from)
                 .toList();
@@ -50,8 +51,8 @@ class DroneController {
 
     @GetMapping("/{droneId}")
     DroneResponse findMine(
-            @AuthenticationPrincipal(expression = "subject") String clientId,
-            @PathVariable String droneId) {
+            @CurrentClientId UUID clientId,
+            @PathVariable UUID droneId) {
 
         return DroneResponse.from(drones.findForClient(droneId, clientId));
     }

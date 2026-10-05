@@ -5,6 +5,7 @@ import com.candronex.accessmanagement.domain.port.ApiCredentialRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.UUID;
 
 /** Adaptateur sortant : réalise le port ApiCredentialRepository avec l'ORM. */
 @Repository
@@ -17,7 +18,7 @@ class JpaApiCredentialRepository implements ApiCredentialRepository {
     }
 
     @Override
-    public Optional<ApiCredential> findByClientId(String clientId) {
+    public Optional<ApiCredential> findByClientId(UUID clientId) {
         return credentials.findById(clientId);
     }
 

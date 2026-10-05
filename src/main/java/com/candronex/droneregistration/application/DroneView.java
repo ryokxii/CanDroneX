@@ -3,11 +3,12 @@ package com.candronex.droneregistration.application;
 import com.candronex.droneregistration.domain.Drone;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /** Projection d'un drone destinée à sortir du module. */
 public record DroneView(
-        String droneId,
-        String clientId,
+        UUID droneId,
+        UUID clientId,
         String imsi,
         String simType,
         String status,

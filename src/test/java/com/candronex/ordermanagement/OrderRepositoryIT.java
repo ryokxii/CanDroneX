@@ -20,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 import static com.candronex.servicecatalog.published.ServiceType.C2_URLLC;
 import static com.candronex.servicecatalog.published.ServiceType.IMAGERY_EMBB;
@@ -29,8 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Persistance du module OrderManagement, sur PostgreSQL réel. */
 class OrderRepositoryIT extends PostgresIntegrationTest {
 
-    private static final String CLIENT = "CLI-INSPECTRA";
-    private static final String DRONE = "DRN-0001";
+    private static final UUID CLIENT = DEMO_CLIENT;
     private static final String IMSI = "302720123456789";
     private static final String KEY = "11111111-2222-3333-4444-555555555555";
 
@@ -46,24 +46,27 @@ class OrderRepositoryIT extends PostgresIntegrationTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    private UUID drone;
+
     @BeforeEach
     void reset() {
         jdbc.execute("TRUNCATE TABLE orders.service_orders CASCADE");
         jdbc.execute("TRUNCATE TABLE drone.drones");
-        registerDrone.register(new RegisterDroneCommand(CLIENT, DRONE, IMSI, SimType.ESIM));
+        drone = registerDrone.register(
+                new RegisterDroneCommand(CLIENT, IMSI, SimType.ESIM)).droneId();
     }
 
     private PlaceOrderCommand twoServices(String key) {
         return new PlaceOrderCommand(CLIENT, key, List.of(
-                new PlaceOrderCommand.OrderLine(DRONE, C2_URLLC),
-                new PlaceOrderCommand.OrderLine(DRONE, IMAGERY_EMBB)));
+                new PlaceOrderCommand.OrderLine(drone, C2_URLLC),
+                new PlaceOrderCommand.OrderLine(drone, IMAGERY_EMBB)));
     }
 
     @Test
     @DisplayName("l'agrégat est écrit avec ses lignes, par cascade")
     void persistsAggregateWithItsLines() {
         PlaceOrderResult placed = placeOrder.placeOrder(twoServices(KEY));
-        String orderId = placed.order().orderId();
+        UUID orderId = placed.order().orderId();
 
         assertThat(jdbc.queryForObject(
                 "SELECT count(*) FROM orders.order_lines WHERE order_id = ?",
@@ -82,7 +85,7 @@ class OrderRepositoryIT extends PostgresIntegrationTest {
 
         // Contourne le service : vérifie la contrainte UNIQUE de dernier recours.
         Order duplicate = Order.place(CLIENT, IdempotencyKey.of(KEY), Instant.now());
-        duplicate.addLine(DRONE, C2_URLLC);
+        duplicate.addLine(drone, C2_URLLC);
 
         assertThatThrownBy(() -> orders.save(duplicate))
                 .isInstanceOf(DataIntegrityViolationException.class);
@@ -128,8 +131,8 @@ class OrderRepositoryIT extends PostgresIntegrationTest {
                 """
                 INSERT INTO orders.order_lines
                     (order_line_id, order_id, drone_id, service_type, status)
-                VALUES ('OL-X', ?, ?, 'VOICE_5G', 'RECEIVED')
-                """, placed.order().orderId(), DRONE))
+                VALUES (?, ?, ?, 'VOICE_5G', 'RECEIVED')
+                """, UUID.randomUUID(), placed.order().orderId(), drone))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 

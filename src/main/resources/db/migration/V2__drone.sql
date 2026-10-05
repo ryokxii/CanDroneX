@@ -4,8 +4,8 @@
 CREATE SCHEMA IF NOT EXISTS drone;
 
 CREATE TABLE drone.drones (
-    drone_id      varchar(32)  NOT NULL,
-    client_id     varchar(32)  NOT NULL,
+    drone_id      uuid         NOT NULL,
+    client_id     uuid         NOT NULL,
     imsi          varchar(15)  NOT NULL,
     sim_type      varchar(8)   NOT NULL,
     status        varchar(16)  NOT NULL,

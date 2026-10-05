@@ -7,6 +7,7 @@ import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Identifiants OAuth 2.0 d'un client ; seule l'empreinte BCrypt du secret est conservée. */
 @Entity
@@ -14,8 +15,8 @@ import java.util.Objects;
 public class ApiCredential {
 
     @Id
-    @Column(name = "client_id", nullable = false, length = 32)
-    private String clientId;
+    @Column(name = "client_id", nullable = false, updatable = false)
+    private UUID clientId;
 
     @Column(name = "secret_hash", nullable = false, length = 100)
     private String secretHash;
@@ -33,7 +34,7 @@ public class ApiCredential {
     protected ApiCredential() {
     }
 
-    private ApiCredential(String clientId, String secretHash, Instant issuedAt,
+    private ApiCredential(UUID clientId, String secretHash, Instant issuedAt,
                           Instant expiresAt, Instant revokedAt) {
         this.clientId = clientId;
         this.secretHash = secretHash;
@@ -43,9 +44,9 @@ public class ApiCredential {
     }
 
     /** Délivre un identifiant à un client. */
-    public static ApiCredential issue(String clientId, String secretHash,
+    public static ApiCredential issue(UUID clientId, String secretHash,
                                       Instant issuedAt, Instant expiresAt) {
-        if (clientId == null || clientId.isBlank()) {
+        if (clientId == null) {
             throw new IllegalArgumentException("L'identifiant du client est obligatoire.");
         }
         if (secretHash == null || secretHash.isBlank()) {
@@ -77,7 +78,7 @@ public class ApiCredential {
         return expiresAt == null || now.isBefore(expiresAt);
     }
 
-    public String clientId() {
+    public UUID clientId() {
         return clientId;
     }
 

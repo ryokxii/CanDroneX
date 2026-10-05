@@ -5,11 +5,12 @@ import com.candronex.ordermanagement.domain.Order;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
+import java.util.UUID;
 
 /** Interface Spring Data, détail d'infrastructure. */
-interface SpringDataOrderRepository extends JpaRepository<Order, String> {
+interface SpringDataOrderRepository extends JpaRepository<Order, UUID> {
 
-    Optional<Order> findByClientIdAndIdempotencyKey(String clientId, IdempotencyKey key);
+    Optional<Order> findByClientIdAndIdempotencyKey(UUID clientId, IdempotencyKey key);
 
-    Optional<Order> findByOrderIdAndClientId(String orderId, String clientId);
+    Optional<Order> findByOrderIdAndClientId(UUID orderId, UUID clientId);
 }

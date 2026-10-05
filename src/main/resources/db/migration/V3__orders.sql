@@ -5,8 +5,8 @@
 CREATE SCHEMA IF NOT EXISTS orders;
 
 CREATE TABLE orders.service_orders (
-    order_id        varchar(32)  NOT NULL,
-    client_id       varchar(32)  NOT NULL,
+    order_id        uuid         NOT NULL,
+    client_id       uuid         NOT NULL,
     idempotency_key varchar(64)  NOT NULL,
     status          varchar(24)  NOT NULL,
     placed_at       timestamptz  NOT NULL,
@@ -27,9 +27,9 @@ CREATE TABLE orders.service_orders (
 CREATE INDEX idx_service_orders_client_id ON orders.service_orders (client_id);
 
 CREATE TABLE orders.order_lines (
-    order_line_id varchar(32)  NOT NULL,
-    order_id      varchar(32)  NOT NULL,
-    drone_id      varchar(32)  NOT NULL,
+    order_line_id uuid         NOT NULL,
+    order_id      uuid         NOT NULL,
+    drone_id      uuid         NOT NULL,
     service_type  varchar(24)  NOT NULL,
     status        varchar(24)  NOT NULL,
 

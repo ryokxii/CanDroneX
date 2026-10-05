@@ -27,6 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -37,7 +38,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class TokenIssuanceServiceTest {
 
-    private static final String CLIENT = "CLI-INSPECTRA";
+    private static final UUID CLIENT_ID = UUID.randomUUID();
+    private static final String CLIENT = CLIENT_ID.toString();
     private static final String SECRET = "s3cret-de-test";
     private static final Instant NOW = Instant.parse("2026-10-04T14:00:00Z");
     private static final Duration TTL = Duration.ofMinutes(15);
@@ -54,7 +56,7 @@ class TokenIssuanceServiceTest {
     @BeforeEach
     void setUp() throws Exception {
         credentials = new InMemoryApiCredentialRepository();
-        credentials.save(ApiCredential.issue(CLIENT, encoder.encode(SECRET), NOW.minusSeconds(3600), null));
+        credentials.save(ApiCredential.issue(CLIENT_ID, encoder.encode(SECRET), NOW.minusSeconds(3600), null));
         key = new RSAKeyGenerator(2048).generate();
         service = new TokenIssuanceService(credentials, encoder,
                 new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(key))),
@@ -133,7 +135,10 @@ class TokenIssuanceServiceTest {
     @Test
     @DisplayName("refuse un client inconnu, avec la même erreur qu'un secret erroné")
     void rejectsUnknownClient() {
-        assertThatThrownBy(() -> service.issue(new ClientCredentialsGrant("CLI-FANTOME", SECRET, Set.of())))
+        assertThatThrownBy(() -> service.issue(new ClientCredentialsGrant(
+                UUID.randomUUID().toString(), SECRET, Set.of())))
+                .isInstanceOf(InvalidClientException.class);
+        assertThatThrownBy(() -> service.issue(new ClientCredentialsGrant("pas-un-uuid", SECRET, Set.of())))
                 .isInstanceOf(InvalidClientException.class);
         assertThatThrownBy(() -> service.issue(new ClientCredentialsGrant(null, SECRET, Set.of())))
                 .isInstanceOf(InvalidClientException.class);
@@ -142,7 +147,7 @@ class TokenIssuanceServiceTest {
     @Test
     @DisplayName("refuse un identifiant révoqué, même avec le bon secret")
     void rejectsRevokedCredential() {
-        ApiCredential current = credentials.findByClientId(CLIENT).orElseThrow();
+        ApiCredential current = credentials.findByClientId(CLIENT_ID).orElseThrow();
         credentials.save(current.revokedAt(NOW.minusSeconds(1)));
 
         assertThatThrownBy(() -> service.issue(new ClientCredentialsGrant(CLIENT, SECRET, Set.of())))
@@ -152,7 +157,7 @@ class TokenIssuanceServiceTest {
     @Test
     @DisplayName("refuse un identifiant expiré, même avec le bon secret")
     void rejectsExpiredCredential() {
-        credentials.save(ApiCredential.issue(CLIENT, encoder.encode(SECRET),
+        credentials.save(ApiCredential.issue(CLIENT_ID, encoder.encode(SECRET),
                 NOW.minusSeconds(7200), NOW.minusSeconds(1)));
 
         assertThatThrownBy(() -> service.issue(new ClientCredentialsGrant(CLIENT, SECRET, Set.of())))

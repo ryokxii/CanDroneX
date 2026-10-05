@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static com.candronex.servicecatalog.published.ServiceType.C2_URLLC;
 import static com.candronex.servicecatalog.published.ServiceType.IMAGERY_EMBB;
@@ -28,9 +29,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** UC-04 — commander les services de connectivité d'un drone. */
 class PlaceOrderServiceTest {
 
-    private static final String CLIENT = "CLI-INSPECTRA";
-    private static final String OTHER_CLIENT = "CLI-AUTRE";
-    private static final String DRONE = "DRN-0001";
+    private static final UUID CLIENT = UUID.randomUUID();
+    private static final UUID OTHER_CLIENT = UUID.randomUUID();
+    private static final UUID DRONE = UUID.randomUUID();
     private static final String KEY = "11111111-2222-3333-4444-555555555555";
     private static final Instant NOW = Instant.parse("2026-10-04T14:15:40Z");
 
@@ -41,7 +42,7 @@ class PlaceOrderServiceTest {
     void setUp() {
         orders = new InMemoryOrderRepository();
 
-        // Le drone DRN-0001 existe et appartient à CLIENT, et à lui seul.
+        // Le drone DRONE existe et appartient à CLIENT, et à lui seul.
         DroneDirectory drones = (droneId, clientId) ->
                 DRONE.equals(droneId) && CLIENT.equals(clientId)
                         ? Optional.of(new DroneSummary(droneId, clientId))
@@ -55,7 +56,7 @@ class PlaceOrderServiceTest {
         service = new PlaceOrderService(placement, orders);
     }
 
-    private PlaceOrderCommand orderFor(String clientId, String key,
+    private PlaceOrderCommand orderFor(UUID clientId, String key,
                                        PlaceOrderCommand.OrderLine... orderLines) {
         return new PlaceOrderCommand(clientId, key, List.of(orderLines));
     }
@@ -92,7 +93,7 @@ class PlaceOrderServiceTest {
     @DisplayName("refuse une commande visant un drone inconnu")
     void rejectsUnknownDrone() {
         assertThatThrownBy(() -> service.placeOrder(orderFor(CLIENT, KEY,
-                new PlaceOrderCommand.OrderLine("DRN-INCONNU", C2_URLLC))))
+                new PlaceOrderCommand.OrderLine(UUID.randomUUID(), C2_URLLC))))
                 .isInstanceOf(DroneNotFoundException.class);
 
         assertThat(orders.count()).isZero();
@@ -129,7 +130,7 @@ class PlaceOrderServiceTest {
     @Test
     @DisplayName("refuse une commande d'un client inconnu")
     void rejectsUnknownClient() {
-        assertThatThrownBy(() -> service.placeOrder(orderFor("CLI-FANTOME", KEY,
+        assertThatThrownBy(() -> service.placeOrder(orderFor(UUID.randomUUID(), KEY,
                 new PlaceOrderCommand.OrderLine(DRONE, C2_URLLC))))
                 .isInstanceOf(UnknownClientException.class);
     }
@@ -173,7 +174,7 @@ class PlaceOrderServiceTest {
     void isolatesOrdersByClient() {
         PlaceOrderResult placed = service.placeOrder(orderFor(CLIENT, KEY,
                 new PlaceOrderCommand.OrderLine(DRONE, C2_URLLC)));
-        String orderId = placed.order().orderId();
+        UUID orderId = placed.order().orderId();
 
         assertThat(service.findForClient(orderId, CLIENT)).isNotNull();
         assertThatThrownBy(() -> service.findForClient(orderId, OTHER_CLIENT))

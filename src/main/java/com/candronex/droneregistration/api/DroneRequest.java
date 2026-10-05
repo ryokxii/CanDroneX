@@ -7,9 +7,6 @@ import jakarta.validation.constraints.NotNull;
 /** Corps de la requête d'enregistrement d'un drone. */
 public record DroneRequest(
 
-        @NotBlank(message = "droneId est obligatoire")
-        String droneId,
-
         @NotBlank(message = "imsi est obligatoire")
         String imsi,
 

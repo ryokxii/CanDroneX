@@ -17,6 +17,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.net.URI;
 import java.util.NoSuchElementException;
@@ -53,6 +54,13 @@ class ProblemDetailsHandler {
     ProblemDetail onIllegalArgument(IllegalArgumentException exception) {
         return problem(HttpStatus.BAD_REQUEST, "invalid-argument",
                 "Requête invalide", exception.getMessage());
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ProblemDetail onMalformedParameter(MethodArgumentTypeMismatchException exception) {
+        return problem(HttpStatus.BAD_REQUEST, "malformed-parameter",
+                "Paramètre mal formé",
+                "Le paramètre " + exception.getName() + " n'a pas le format attendu.");
     }
 
     @ExceptionHandler(MissingRequestHeaderException.class)

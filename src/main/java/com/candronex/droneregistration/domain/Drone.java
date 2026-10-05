@@ -10,6 +10,7 @@ import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.UUID;
 
 /** Racine d'agrégat du contexte DroneRegistration. */
 @Entity
@@ -17,11 +18,11 @@ import java.util.Objects;
 public class Drone {
 
     @Id
-    @Column(name = "drone_id", nullable = false, length = 32)
-    private String droneId;
+    @Column(name = "drone_id", nullable = false, updatable = false)
+    private UUID droneId;
 
-    @Column(name = "client_id", nullable = false, length = 32)
-    private String clientId;
+    @Column(name = "client_id", nullable = false, updatable = false)
+    private UUID clientId;
 
     @Embedded
     private NetworkIdentity networkIdentity;
@@ -37,7 +38,7 @@ public class Drone {
     protected Drone() {
     }
 
-    private Drone(String droneId, String clientId, NetworkIdentity networkIdentity,
+    private Drone(UUID droneId, UUID clientId, NetworkIdentity networkIdentity,
                   DroneStatus status, Instant registeredAt) {
         this.droneId = droneId;
         this.clientId = clientId;
@@ -46,32 +47,29 @@ public class Drone {
         this.registeredAt = registeredAt;
     }
 
-    /** Enregistre un drone pour un client. */
-    public static Drone register(String droneId, String clientId,
-                                 NetworkIdentity networkIdentity, Instant registeredAt) {
-        if (droneId == null || droneId.isBlank()) {
-            throw new InvalidNetworkIdentityException("L'identifiant du drone est obligatoire.");
-        }
-        if (clientId == null || clientId.isBlank()) {
+    /** Enregistre un drone pour un client ; son identifiant est généré, jamais fourni. */
+    public static Drone register(UUID clientId, NetworkIdentity networkIdentity,
+                                 Instant registeredAt) {
+        if (clientId == null) {
             throw new InvalidNetworkIdentityException("L'identifiant du client est obligatoire.");
         }
         if (networkIdentity == null) {
             throw new InvalidNetworkIdentityException("L'identité réseau est obligatoire.");
         }
-        return new Drone(droneId, clientId, networkIdentity,
+        return new Drone(UUID.randomUUID(), clientId, networkIdentity,
                 DroneStatus.REGISTERED, registeredAt);
     }
 
     /** Un drone n'est consultable et commandable que par son propriétaire. */
-    public boolean belongsTo(String candidateClientId) {
+    public boolean belongsTo(UUID candidateClientId) {
         return clientId.equals(candidateClientId);
     }
 
-    public String droneId() {
+    public UUID droneId() {
         return droneId;
     }
 
-    public String clientId() {
+    public UUID clientId() {
         return clientId;
     }
 

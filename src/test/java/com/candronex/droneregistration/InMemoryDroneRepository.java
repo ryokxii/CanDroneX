@@ -8,11 +8,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Réalisation en mémoire du port DroneRepository. */
 class InMemoryDroneRepository implements DroneRepository {
 
-    private final Map<String, Drone> byId = new LinkedHashMap<>();
+    private final Map<UUID, Drone> byId = new LinkedHashMap<>();
 
     @Override
     public boolean existsByImsi(String imsi) {
@@ -21,13 +22,13 @@ class InMemoryDroneRepository implements DroneRepository {
     }
 
     @Override
-    public Optional<Drone> findByIdAndClientId(String droneId, String clientId) {
+    public Optional<Drone> findByIdAndClientId(UUID droneId, UUID clientId) {
         return Optional.ofNullable(byId.get(droneId))
                 .filter(drone -> drone.belongsTo(clientId));
     }
 
     @Override
-    public List<Drone> findAllByClientId(String clientId) {
+    public List<Drone> findAllByClientId(UUID clientId) {
         List<Drone> found = new ArrayList<>();
         byId.values().stream().filter(drone -> drone.belongsTo(clientId)).forEach(found::add);
         return found;

@@ -6,6 +6,7 @@ import com.candronex.ordermanagement.domain.port.OrderRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.UUID;
 
 /** Adaptateur sortant : réalise le port OrderRepository avec l'ORM. */
 @Repository
@@ -18,12 +19,12 @@ class JpaOrderRepository implements OrderRepository {
     }
 
     @Override
-    public Optional<Order> findByClientIdAndIdempotencyKey(String clientId, IdempotencyKey key) {
+    public Optional<Order> findByClientIdAndIdempotencyKey(UUID clientId, IdempotencyKey key) {
         return orders.findByClientIdAndIdempotencyKey(clientId, key);
     }
 
     @Override
-    public Optional<Order> findByIdAndClientId(String orderId, String clientId) {
+    public Optional<Order> findByIdAndClientId(UUID orderId, UUID clientId) {
         return orders.findByOrderIdAndClientId(orderId, clientId);
     }
 

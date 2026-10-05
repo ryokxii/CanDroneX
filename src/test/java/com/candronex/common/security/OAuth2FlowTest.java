@@ -51,7 +51,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
@@ -72,9 +71,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         TokenIssuanceService.class, OAuth2FlowTest.Credentials.class})
 class OAuth2FlowTest {
 
-    static final String CLIENT = "CLI-INSPECTRA";
+    static final UUID CLIENT_ID = UUID.randomUUID();
+    static final String CLIENT = CLIENT_ID.toString();
     static final String SECRET = "inspectra-demo-secret";
-    static final String REVOKED_CLIENT = "CLI-REVOQUE";
+    static final UUID REVOKED_CLIENT_ID = UUID.randomUUID();
+    static final UUID DRONE_ID = UUID.randomUUID();
 
     @TestConfiguration
     static class Credentials {
@@ -84,8 +85,8 @@ class OAuth2FlowTest {
             BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
             Instant issued = Instant.now().minusSeconds(3600);
             InMemoryApiCredentialRepository repository = new InMemoryApiCredentialRepository();
-            repository.save(ApiCredential.issue(CLIENT, encoder.encode(SECRET), issued, null));
-            repository.save(ApiCredential.issue(REVOKED_CLIENT, encoder.encode(SECRET), issued, null)
+            repository.save(ApiCredential.issue(CLIENT_ID, encoder.encode(SECRET), issued, null));
+            repository.save(ApiCredential.issue(REVOKED_CLIENT_ID, encoder.encode(SECRET), issued, null)
                     .revokedAt(issued.plusSeconds(1)));
             return repository;
         }
@@ -156,8 +157,8 @@ class OAuth2FlowTest {
         return "Bearer " + token;
     }
 
-    static DroneView droneOf(String clientId) {
-        return new DroneView("DRN-0001", clientId, "302720123456789", "ESIM", "REGISTERED",
+    static DroneView droneOf(UUID clientId) {
+        return new DroneView(DRONE_ID, clientId, "302720123456789", "ESIM", "REGISTERED",
                 Instant.parse("2026-10-04T14:00:00Z"));
     }
 
@@ -212,7 +213,8 @@ class OAuth2FlowTest {
         @Test
         @DisplayName("401 invalid_client pour un client inconnu ou révoqué, sans distinguer la cause")
         void rejectsUnknownAndRevokedClientsIdentically() throws Exception {
-            for (String clientId : new String[] {"CLI-FANTOME", REVOKED_CLIENT}) {
+            for (String clientId : new String[] {
+                    UUID.randomUUID().toString(), "pas-un-uuid", REVOKED_CLIENT_ID.toString()}) {
                 mvc.perform(tokenRequest()
                                 .param("grant_type", "client_credentials")
                                 .param("client_id", clientId)
@@ -288,14 +290,14 @@ class OAuth2FlowTest {
         @Test
         @DisplayName("un jeton obtenu sur /oauth2/token donne accès aux drones du client du jeton")
         void tokenGrantsAccessAsTokenSubject() throws Exception {
-            when(drones.listForClient(CLIENT)).thenReturn(List.of(droneOf(CLIENT)));
+            when(drones.listForClient(CLIENT_ID)).thenReturn(List.of(droneOf(CLIENT_ID)));
             String token = obtainToken();
 
             mvc.perform(get("/api/v1/drones").header(HttpHeaders.AUTHORIZATION, bearer(token)))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].droneId").value("DRN-0001"));
+                    .andExpect(jsonPath("$[0].droneId").value(DRONE_ID.toString()));
 
-            verify(drones).listForClient(CLIENT);
+            verify(drones).listForClient(CLIENT_ID);
         }
 
         @Test
@@ -304,20 +306,21 @@ class OAuth2FlowTest {
             mvc.perform(get("/api/v1/drones").header("X-Client-Id", CLIENT))
                     .andExpect(status().isUnauthorized());
 
-            when(drones.listForClient(anyString())).thenReturn(List.of());
+            UUID victim = UUID.randomUUID();
+            when(drones.listForClient(any())).thenReturn(List.of());
             mvc.perform(get("/api/v1/drones")
                             .header(HttpHeaders.AUTHORIZATION, bearer(obtainToken()))
-                            .header("X-Client-Id", "CLI-VICTIME"))
+                            .header("X-Client-Id", victim.toString()))
                     .andExpect(status().isOk());
 
-            verify(drones).listForClient(CLIENT);
-            verify(drones, never()).listForClient("CLI-VICTIME");
+            verify(drones).listForClient(CLIENT_ID);
+            verify(drones, never()).listForClient(victim);
         }
 
         @Test
         @DisplayName("la commande est passée au nom du sujet du jeton")
         void orderIsPlacedForTokenSubject() throws Exception {
-            OrderView view = new OrderView("ORD-1", CLIENT, "PENDING",
+            OrderView view = new OrderView(UUID.randomUUID(), CLIENT_ID, "RECEIVED",
                     Instant.parse("2026-10-04T14:00:00Z"), null, List.of());
             when(orders.placeOrder(any())).thenReturn(new PlaceOrderResult(view, true));
 
@@ -326,13 +329,13 @@ class OAuth2FlowTest {
                             .header("Idempotency-Key", UUID.randomUUID().toString())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"orderLines":[{"droneId":"DRN-0001","serviceType":"IMAGERY_EMBB"}]}
-                                    """))
+                                    {"orderLines":[{"droneId":"%s","serviceType":"IMAGERY_EMBB"}]}
+                                    """.formatted(DRONE_ID)))
                     .andExpect(status().isCreated());
 
             ArgumentCaptor<PlaceOrderCommand> command = ArgumentCaptor.forClass(PlaceOrderCommand.class);
             verify(orders).placeOrder(command.capture());
-            assertThat(command.getValue().clientId()).isEqualTo(CLIENT);
+            assertThat(command.getValue().clientId()).isEqualTo(CLIENT_ID);
         }
 
         @Test
@@ -427,16 +430,27 @@ class OAuth2FlowTest {
                             .header(HttpHeaders.AUTHORIZATION, bearer(readOnly))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"droneId":"DRN-0001","imsi":"302720123456789","simType":"ESIM"}
+                                    {"imsi":"302720123456789","simType":"ESIM"}
                                     """))
                     .andExpect(status().isForbidden())
                     .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, containsString("insufficient_scope")))
                     .andExpect(jsonPath("$.type").value("https://candronex.ca/problems/insufficient-scope"));
 
-            mvc.perform(get("/api/v1/service-orders/ORD-1").header(HttpHeaders.AUTHORIZATION, bearer(readOnly)))
+            mvc.perform(get("/api/v1/service-orders/" + UUID.randomUUID()).header(HttpHeaders.AUTHORIZATION, bearer(readOnly)))
                     .andExpect(status().isForbidden());
 
             verify(drones, never()).register(any(RegisterDroneCommand.class));
+        }
+
+        @Test
+        @DisplayName("400 pour un identifiant de ressource qui n'est pas un UUID")
+        void rejectsMalformedResourceId() throws Exception {
+            mvc.perform(get("/api/v1/drones/DRN-0001")
+                            .header(HttpHeaders.AUTHORIZATION, bearer(obtainToken())))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.type").value("https://candronex.ca/problems/malformed-parameter"));
+
+            verify(drones, never()).findForClient(any(), any());
         }
 
         @Test

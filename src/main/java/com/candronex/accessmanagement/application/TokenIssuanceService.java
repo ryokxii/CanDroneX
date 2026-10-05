@@ -17,6 +17,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -63,13 +64,13 @@ public class TokenIssuanceService {
         Instant expiresAt = now.plus(properties.accessTokenTtl());
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(properties.issuer())
-                .subject(credential.clientId())
+                .subject(credential.clientId().toString())
                 .audience(List.of(properties.audience()))
                 .issuedAt(now)
                 .notBefore(now)
                 .expiresAt(expiresAt)
                 .id(UUID.randomUUID().toString())
-                .claim("client_id", credential.clientId())
+                .claim("client_id", credential.clientId().toString())
                 .claim("scope", String.join(" ", new TreeSet<>(scopes)))
                 .build();
         JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).type("JWT").build();
@@ -80,9 +81,9 @@ public class TokenIssuanceService {
 
     private ApiCredential authenticate(ClientCredentialsGrant grant, Instant now) {
         String secret = grant.clientSecret() == null ? "" : grant.clientSecret();
-        ApiCredential credential = grant.clientId() == null
-                ? null
-                : credentials.findByClientId(grant.clientId()).orElse(null);
+        ApiCredential credential = parseClientId(grant.clientId())
+                .flatMap(credentials::findByClientId)
+                .orElse(null);
 
         String hash = credential == null ? decoyHash : credential.secretHash();
         boolean secretMatches = passwordEncoder.matches(secret, hash);
@@ -91,6 +92,18 @@ public class TokenIssuanceService {
             throw new InvalidClientException();
         }
         return credential;
+    }
+
+    /** Un clientId mal formé est traité comme un client inconnu. */
+    private static Optional<UUID> parseClientId(String clientId) {
+        if (clientId == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(UUID.fromString(clientId));
+        } catch (IllegalArgumentException malformed) {
+            return Optional.empty();
+        }
     }
 
     private static Set<String> grantedScopes(Set<String> requested) {

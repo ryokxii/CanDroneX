@@ -25,11 +25,11 @@ import java.util.UUID;
 public class Order {
 
     @Id
-    @Column(name = "order_id", nullable = false, length = 32)
-    private String orderId;
+    @Column(name = "order_id", nullable = false, updatable = false)
+    private UUID orderId;
 
-    @Column(name = "client_id", nullable = false, length = 32)
-    private String clientId;
+    @Column(name = "client_id", nullable = false, updatable = false)
+    private UUID clientId;
 
     @Embedded
     private IdempotencyKey idempotencyKey;
@@ -53,7 +53,7 @@ public class Order {
     protected Order() {
     }
 
-    private Order(String orderId, String clientId, IdempotencyKey idempotencyKey,
+    private Order(UUID orderId, UUID clientId, IdempotencyKey idempotencyKey,
                   Instant placedAt) {
         this.orderId = orderId;
         this.clientId = clientId;
@@ -62,25 +62,24 @@ public class Order {
         this.status = OrderStatus.RECEIVED;
     }
 
-    /** Ouvre une commande pour un client. */
-    public static Order place(String clientId, IdempotencyKey idempotencyKey,
+    /** Ouvre une commande pour un client ; son identifiant est généré, jamais fourni. */
+    public static Order place(UUID clientId, IdempotencyKey idempotencyKey,
                               Instant placedAt) {
-        if (clientId == null || clientId.isBlank()) {
+        if (clientId == null) {
             throw new IllegalArgumentException("L'identifiant du client est obligatoire.");
         }
         if (idempotencyKey == null) {
             throw new IllegalArgumentException("La clé d'idempotence est obligatoire.");
         }
-        String orderId = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
-        return new Order(orderId, clientId, idempotencyKey, placedAt);
+        return new Order(UUID.randomUUID(), clientId, idempotencyKey, placedAt);
     }
 
     /**
      * Ajoute une ligne et applique l'invariant de l'agrégat : au plus une ligne par couple drone +
      * type de service.
      */
-    public OrderLine addLine(String droneId, ServiceType serviceType) {
-        if (droneId == null || droneId.isBlank()) {
+    public OrderLine addLine(UUID droneId, ServiceType serviceType) {
+        if (droneId == null) {
             throw new IllegalArgumentException("L'identifiant du drone est obligatoire.");
         }
         if (serviceType == null) {
@@ -123,7 +122,7 @@ public class Order {
     }
 
     /** Fait évoluer l'état d'une ligne, puis recalcule celui de la commande. */
-    public void updateLineStatus(String orderLineId, OrderStatus newStatus, Instant now) {
+    public void updateLineStatus(UUID orderLineId, OrderStatus newStatus, Instant now) {
         OrderLine line = orderLines.stream()
                 .filter(candidate -> candidate.orderLineId().equals(orderLineId))
                 .findFirst()
@@ -146,15 +145,15 @@ public class Order {
         return !orderLines.isEmpty();
     }
 
-    public boolean belongsTo(String candidateClientId) {
+    public boolean belongsTo(UUID candidateClientId) {
         return clientId.equals(candidateClientId);
     }
 
-    public String orderId() {
+    public UUID orderId() {
         return orderId;
     }
 
-    public String clientId() {
+    public UUID clientId() {
         return clientId;
     }
 

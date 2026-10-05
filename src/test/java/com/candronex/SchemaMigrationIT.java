@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -65,9 +66,9 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
     @Test
     @DisplayName("le client de démonstration est amorcé, et lui seul")
     void seedsOnlyTheDemoClient() {
-        List<String> clients = jdbc.queryForList(
-                "SELECT client_id FROM access.clients", String.class);
-        assertThat(clients).containsExactly("CLI-INSPECTRA");
+        List<UUID> clients = jdbc.queryForList(
+                "SELECT client_id FROM access.clients", UUID.class);
+        assertThat(clients).containsExactly(DEMO_CLIENT);
 
         // Aucun drone ni commande : UC-02 et UC-04 doivent les produire.
         assertThat(jdbc.queryForObject("SELECT count(*) FROM drone.drones", Integer.class))

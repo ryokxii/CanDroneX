@@ -8,16 +8,17 @@ import org.springframework.dao.DataIntegrityViolationException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Réalisation en mémoire du port OrderRepository. */
 class InMemoryOrderRepository implements OrderRepository {
 
-    private final Map<String, Order> byId = new LinkedHashMap<>();
+    private final Map<UUID, Order> byId = new LinkedHashMap<>();
     private boolean nextSaveViolatesUniqueKey = false;
     private boolean nextLookupSeesNothing = false;
 
     @Override
-    public Optional<Order> findByClientIdAndIdempotencyKey(String clientId, IdempotencyKey key) {
+    public Optional<Order> findByClientIdAndIdempotencyKey(UUID clientId, IdempotencyKey key) {
         if (nextLookupSeesNothing) {
             nextLookupSeesNothing = false;
             return Optional.empty();
@@ -29,7 +30,7 @@ class InMemoryOrderRepository implements OrderRepository {
     }
 
     @Override
-    public Optional<Order> findByIdAndClientId(String orderId, String clientId) {
+    public Optional<Order> findByIdAndClientId(UUID orderId, UUID clientId) {
         return Optional.ofNullable(byId.get(orderId))
                 .filter(order -> order.belongsTo(clientId));
     }

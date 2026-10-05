@@ -3,10 +3,11 @@ package com.candronex.droneregistration.api;
 import com.candronex.droneregistration.application.DroneView;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /** Représentation JSON d'un drone — réduite au strict nécessaire. */
 public record DroneResponse(
-        String droneId,
+        UUID droneId,
         String status,
         Instant registeredAt) {
 

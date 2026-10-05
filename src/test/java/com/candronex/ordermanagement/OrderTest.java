@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.UUID;
 
 import static com.candronex.servicecatalog.published.ServiceType.C2_URLLC;
 import static com.candronex.servicecatalog.published.ServiceType.IMAGERY_EMBB;
@@ -21,8 +22,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class OrderTest {
 
-    private static final String CLIENT = "CLI-INSPECTRA";
-    private static final String DRONE = "DRN-0001";
+    private static final UUID CLIENT = UUID.randomUUID();
+    private static final UUID DRONE = UUID.randomUUID();
     private static final Instant NOW = Instant.parse("2026-10-04T14:15:40Z");
 
     private Order anOrder() {
@@ -92,7 +93,7 @@ class OrderTest {
         @DisplayName("une ligne encore en cours donne une commande IN_PROGRESS")
         void someStillRunning() {
             Order order = anOrder();
-            String first = order.addLine(DRONE, C2_URLLC).orderLineId();
+            UUID first = order.addLine(DRONE, C2_URLLC).orderLineId();
             order.addLine(DRONE, IMAGERY_EMBB);
 
             order.updateLineStatus(first, OrderStatus.COMPLETED, NOW);
@@ -104,8 +105,8 @@ class OrderTest {
         @DisplayName("toutes les lignes COMPLETED donnent une commande COMPLETED")
         void allCompleted() {
             Order order = anOrder();
-            String first = order.addLine(DRONE, C2_URLLC).orderLineId();
-            String second = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
+            UUID first = order.addLine(DRONE, C2_URLLC).orderLineId();
+            UUID second = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
 
             order.updateLineStatus(first, OrderStatus.COMPLETED, NOW);
             order.updateLineStatus(second, OrderStatus.COMPLETED, NOW);
@@ -118,8 +119,8 @@ class OrderTest {
         @DisplayName("un service rendu et un en échec donnent PARTIALLY_COMPLETED")
         void mixedOutcomesArePartial() {
             Order order = anOrder();
-            String c2 = order.addLine(DRONE, C2_URLLC).orderLineId();
-            String imagery = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
+            UUID c2 = order.addLine(DRONE, C2_URLLC).orderLineId();
+            UUID imagery = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
 
             order.updateLineStatus(c2, OrderStatus.COMPLETED, NOW);
             order.updateLineStatus(imagery, OrderStatus.FAILED, NOW);
@@ -133,8 +134,8 @@ class OrderTest {
         @DisplayName("aucune ligne rendue donne une commande FAILED")
         void noneCompletedIsFailed() {
             Order order = anOrder();
-            String c2 = order.addLine(DRONE, C2_URLLC).orderLineId();
-            String imagery = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
+            UUID c2 = order.addLine(DRONE, C2_URLLC).orderLineId();
+            UUID imagery = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
 
             order.updateLineStatus(c2, OrderStatus.FAILED, NOW);
             order.updateLineStatus(imagery, OrderStatus.CANCELLED, NOW);
@@ -146,8 +147,8 @@ class OrderTest {
         @DisplayName("toutes les lignes annulées donnent une commande CANCELLED")
         void allCancelled() {
             Order order = anOrder();
-            String c2 = order.addLine(DRONE, C2_URLLC).orderLineId();
-            String imagery = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
+            UUID c2 = order.addLine(DRONE, C2_URLLC).orderLineId();
+            UUID imagery = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
 
             order.updateLineStatus(c2, OrderStatus.CANCELLED, NOW);
             order.updateLineStatus(imagery, OrderStatus.CANCELLED, NOW);
@@ -159,7 +160,7 @@ class OrderTest {
         @DisplayName("une ligne ne peut pas être partiellement rendue")
         void lineCannotBePartiallyCompleted() {
             Order order = anOrder();
-            String line = order.addLine(DRONE, C2_URLLC).orderLineId();
+            UUID line = order.addLine(DRONE, C2_URLLC).orderLineId();
 
             assertThatThrownBy(() ->
                     order.updateLineStatus(line, OrderStatus.PARTIALLY_COMPLETED, NOW))

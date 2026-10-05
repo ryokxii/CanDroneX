@@ -4,10 +4,11 @@ import com.candronex.ordermanagement.application.OrderView;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /** Représentation JSON d'une commande et de ses lignes. */
 public record OrderResponse(
-        String orderId,
+        UUID orderId,
         String status,
         Instant placedAt,
         Instant completedAt,
@@ -31,8 +32,8 @@ public record OrderResponse(
     }
 
     public record OrderLineResponse(
-            String orderLineId,
-            String droneId,
+            UUID orderLineId,
+            UUID droneId,
             String serviceType,
             String status) {
     }

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Adaptateur sortant : réalise le port DroneRepository avec l'ORM. */
 @Repository
@@ -23,12 +24,12 @@ class JpaDroneRepository implements DroneRepository {
     }
 
     @Override
-    public Optional<Drone> findByIdAndClientId(String droneId, String clientId) {
+    public Optional<Drone> findByIdAndClientId(UUID droneId, UUID clientId) {
         return drones.findByDroneIdAndClientId(droneId, clientId);
     }
 
     @Override
-    public List<Drone> findAllByClientId(String clientId) {
+    public List<Drone> findAllByClientId(UUID clientId) {
         return drones.findAllByClientId(clientId);
     }
 

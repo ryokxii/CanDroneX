@@ -5,6 +5,8 @@ import com.candronex.accessmanagement.published.ClientDirectory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 /** Réalise l'interface publiée ClientDirectory. */
 @Service
 class ClientDirectoryService implements ClientDirectory {
@@ -17,7 +19,7 @@ class ClientDirectoryService implements ClientDirectory {
 
     @Override
     @Transactional(readOnly = true)
-    public boolean exists(String clientId) {
+    public boolean exists(UUID clientId) {
         return clientId != null && clients.existsById(clientId);
     }
 }

@@ -4,11 +4,12 @@ import com.candronex.ordermanagement.domain.Order;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /** Projection d'une commande destinée à sortir du module. */
 public record OrderView(
-        String orderId,
-        String clientId,
+        UUID orderId,
+        UUID clientId,
         String status,
         Instant placedAt,
         Instant completedAt,
@@ -34,8 +35,8 @@ public record OrderView(
 
     /** L'état par ligne : c'est lui qui fait autorité. */
     public record OrderLineView(
-            String orderLineId,
-            String droneId,
+            UUID orderLineId,
+            UUID droneId,
             String serviceType,
             String status) {
     }

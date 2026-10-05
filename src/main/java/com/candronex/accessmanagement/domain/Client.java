@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Racine d'agrégat du contexte AccessManagement : l'exploitant de drones abonné à la plateforme.
@@ -15,8 +16,8 @@ import java.util.Objects;
 public class Client {
 
     @Id
-    @Column(name = "client_id", nullable = false, length = 32)
-    private String clientId;
+    @Column(name = "client_id", nullable = false, updatable = false)
+    private UUID clientId;
 
     @Column(name = "company_name", nullable = false, length = 120)
     private String companyName;
@@ -26,23 +27,20 @@ public class Client {
     protected Client() {
     }
 
-    private Client(String clientId, String companyName) {
+    private Client(UUID clientId, String companyName) {
         this.clientId = clientId;
         this.companyName = companyName;
     }
 
-    /** Crée un client B2B. */
-    public static Client onboard(String clientId, String companyName) {
-        if (clientId == null || clientId.isBlank()) {
-            throw new IllegalArgumentException("L'identifiant du client est obligatoire.");
-        }
+    /** Crée un client B2B ; son identifiant est généré, jamais fourni. */
+    public static Client onboard(String companyName) {
         if (companyName == null || companyName.isBlank()) {
             throw new IllegalArgumentException("La raison sociale est obligatoire.");
         }
-        return new Client(clientId, companyName);
+        return new Client(UUID.randomUUID(), companyName);
     }
 
-    public String clientId() {
+    public UUID clientId() {
         return clientId;
     }
 

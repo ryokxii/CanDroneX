@@ -20,15 +20,15 @@ import java.util.UUID;
 public class OrderLine {
 
     @Id
-    @Column(name = "order_line_id", nullable = false, length = 32)
-    private String orderLineId;
+    @Column(name = "order_line_id", nullable = false, updatable = false)
+    private UUID orderLineId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;
 
-    @Column(name = "drone_id", nullable = false, length = 32)
-    private String droneId;
+    @Column(name = "drone_id", nullable = false, updatable = false)
+    private UUID droneId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "service_type", nullable = false, length = 24)
@@ -43,8 +43,8 @@ public class OrderLine {
     }
 
     /** Visible de l'agrégat seul : une ligne ne se crée que par Order.addLine. */
-    OrderLine(Order order, String droneId, ServiceType serviceType) {
-        this.orderLineId = "OL-" + UUID.randomUUID().toString().substring(0, 8);
+    OrderLine(Order order, UUID droneId, ServiceType serviceType) {
+        this.orderLineId = UUID.randomUUID();
         this.order = order;
         this.droneId = droneId;
         this.serviceType = serviceType;
@@ -61,15 +61,15 @@ public class OrderLine {
     }
 
     /** Une ligne vise un couple drone + type de service, qui l'identifie métier. */
-    boolean targets(String candidateDroneId, ServiceType candidateServiceType) {
+    boolean targets(UUID candidateDroneId, ServiceType candidateServiceType) {
         return droneId.equals(candidateDroneId) && serviceType == candidateServiceType;
     }
 
-    public String orderLineId() {
+    public UUID orderLineId() {
         return orderLineId;
     }
 
-    public String droneId() {
+    public UUID droneId() {
         return droneId;
     }
 

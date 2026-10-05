@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.UUID;
 
 /** Service applicatif d'UC-02 : enregistrer un drone et son identité réseau. */
 @Service
@@ -43,7 +44,6 @@ public class RegisterDroneService {
                 NetworkIdentity.of(command.imsi(), command.simType());
 
         Drone drone = Drone.register(
-                command.droneId(),
                 command.clientId(),
                 networkIdentity,
                 clock.instant());
@@ -54,7 +54,7 @@ public class RegisterDroneService {
 
     /** Les drones du client identifié, et eux seuls. */
     @Transactional(readOnly = true)
-    public List<DroneView> listForClient(String clientId) {
+    public List<DroneView> listForClient(UUID clientId) {
         return drones.findAllByClientId(clientId).stream()
                 .map(DroneView::from)
                 .toList();
@@ -62,7 +62,7 @@ public class RegisterDroneService {
 
     /** Un drone du client identifié. */
     @Transactional(readOnly = true)
-    public DroneView findForClient(String droneId, String clientId) {
+    public DroneView findForClient(UUID droneId, UUID clientId) {
         return drones.findByIdAndClientId(droneId, clientId)
                 .map(DroneView::from)
                 .orElseThrow(() -> new NoSuchElementException("Drone introuvable : " + droneId));

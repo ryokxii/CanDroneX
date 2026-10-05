@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.NoSuchElementException;
+import java.util.UUID;
 
 /** Point d'entrée applicatif d'UC-04 : commander les services de connectivité d'un drone. */
 @Service
@@ -39,7 +40,7 @@ public class PlaceOrderService {
 
     /** Une commande du client identifié. */
     @Transactional(readOnly = true)
-    public OrderView findForClient(String orderId, String clientId) {
+    public OrderView findForClient(UUID orderId, UUID clientId) {
         return orders.findByIdAndClientId(orderId, clientId)
                 .map(OrderView::from)
                 .orElseThrow(() -> new NoSuchElementException("Commande introuvable : " + orderId));

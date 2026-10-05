@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.UUID;
 
 /** Réalise l'interface publiée DroneDirectory. */
 @Service
@@ -20,7 +21,7 @@ class DroneDirectoryService implements DroneDirectory {
 
     @Override
     @Transactional(readOnly = true)
-    public Optional<DroneSummary> findForClient(String droneId, String clientId) {
+    public Optional<DroneSummary> findForClient(UUID droneId, UUID clientId) {
         return drones.findByIdAndClientId(droneId, clientId)
                 .map(drone -> new DroneSummary(drone.droneId(), drone.clientId()));
     }

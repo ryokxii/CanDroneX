@@ -1,11 +1,11 @@
 package com.candronex.ordermanagement.api;
 
+import com.candronex.common.security.CurrentClientId;
 import com.candronex.ordermanagement.application.PlaceOrderCommand;
 import com.candronex.ordermanagement.application.PlaceOrderResult;
 import com.candronex.ordermanagement.application.PlaceOrderService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.util.UUID;
 
 /** Adaptateur entrant du module OrderManagement. */
 @RestController
@@ -31,7 +32,7 @@ class OrderController {
 
     @PostMapping
     ResponseEntity<OrderResponse> place(
-            @AuthenticationPrincipal(expression = "subject") String clientId,
+            @CurrentClientId UUID clientId,
             @RequestHeader(IDEMPOTENCY_HEADER) String idempotencyKey,
             @Valid @RequestBody OrderRequest request) {
 
@@ -57,8 +58,8 @@ class OrderController {
 
     @GetMapping("/{orderId}")
     OrderResponse findMine(
-            @AuthenticationPrincipal(expression = "subject") String clientId,
-            @PathVariable String orderId) {
+            @CurrentClientId UUID clientId,
+            @PathVariable UUID orderId) {
 
         return OrderResponse.from(orders.findForClient(orderId, clientId));
     }
