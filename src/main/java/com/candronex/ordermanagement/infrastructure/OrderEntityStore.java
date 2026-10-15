@@ -9,6 +9,4 @@ import java.util.UUID;
 interface OrderEntityStore extends JpaRepository<OrderEntity, UUID> {
 
     Optional<OrderEntity> findByClientIdAndIdempotencyKey(UUID clientId, String idempotencyKey);
-
-    Optional<OrderEntity> findByOrderIdAndClientId(UUID orderId, UUID clientId);
 }

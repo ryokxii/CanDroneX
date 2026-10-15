@@ -25,11 +25,6 @@ class JpaOrderRepository implements OrderRepository {
     }
 
     @Override
-    public Optional<Order> findByIdAndClientId(UUID orderId, UUID clientId) {
-        return orders.findByOrderIdAndClientId(orderId, clientId).map(OrderEntity::toDomain);
-    }
-
-    @Override
     public void save(Order order) {
         orders.save(OrderEntity.from(order));
     }

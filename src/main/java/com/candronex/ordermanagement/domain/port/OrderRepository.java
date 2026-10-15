@@ -6,12 +6,10 @@ import com.candronex.ordermanagement.domain.Order;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Port sortant de l'agrégat Order. */
+/** Port sortant de l'agrégat Order. Toute lecture d'une commande exige le client qui la possède. */
 public interface OrderRepository {
 
     Optional<Order> findByClientIdAndIdempotencyKey(UUID clientId, IdempotencyKey key);
-
-    Optional<Order> findByIdAndClientId(UUID orderId, UUID clientId);
 
     void save(Order order);
 }

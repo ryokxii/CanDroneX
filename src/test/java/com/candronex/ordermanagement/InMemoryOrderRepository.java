@@ -24,15 +24,9 @@ class InMemoryOrderRepository implements OrderRepository {
             return Optional.empty();
         }
         return byId.values().stream()
-                .filter(order -> order.belongsTo(clientId))
+                .filter(order -> order.clientId().equals(clientId))
                 .filter(order -> order.idempotencyKey().equals(key))
                 .findFirst();
-    }
-
-    @Override
-    public Optional<Order> findByIdAndClientId(UUID orderId, UUID clientId) {
-        return Optional.ofNullable(byId.get(orderId))
-                .filter(order -> order.belongsTo(clientId));
     }
 
     @Override
@@ -57,11 +51,6 @@ class InMemoryOrderRepository implements OrderRepository {
      */
     void hideNextLookup() {
         this.nextLookupSeesNothing = true;
-    }
-
-    /** Insère une commande sans passer par save, pour préparer un état. */
-    void given(Order order) {
-        byId.put(order.orderId(), order);
     }
 
     int count() {

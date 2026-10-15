@@ -112,10 +112,6 @@ public final class Order {
         return orderLines.stream().map(OrderLine::key).toList();
     }
 
-    public boolean belongsTo(UUID candidateClientId) {
-        return clientId.equals(candidateClientId);
-    }
-
     public UUID orderId() {
         return orderId;
     }

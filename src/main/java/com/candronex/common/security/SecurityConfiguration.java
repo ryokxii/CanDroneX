@@ -39,8 +39,6 @@ public class SecurityConfiguration {
                                 .hasAuthority(SCOPE + ApiScopes.DRONES_READ)
                         .requestMatchers(HttpMethod.POST, "/api/v1/drones")
                                 .hasAuthority(SCOPE + ApiScopes.DRONES_WRITE)
-                        .requestMatchers(HttpMethod.GET, "/api/v1/service-orders/**")
-                                .hasAuthority(SCOPE + ApiScopes.ORDERS_READ)
                         .requestMatchers(HttpMethod.POST, "/api/v1/service-orders")
                                 .hasAuthority(SCOPE + ApiScopes.ORDERS_WRITE)
                         // Toute route non listée est refusée.

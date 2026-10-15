@@ -6,8 +6,6 @@ import com.candronex.ordermanagement.application.PlaceOrderResult;
 import com.candronex.ordermanagement.application.PlaceOrderService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -17,7 +15,10 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URI;
 import java.util.UUID;
 
-/** Adaptateur entrant du module OrderManagement. */
+/**
+ * Adaptateur entrant du module OrderManagement. Le suivi d'une commande (UC-05) est hors
+ * périmètre : seule la création est exposée.
+ */
 @RestController
 @RequestMapping("/api/v1/service-orders")
 class OrderController {
@@ -54,13 +55,5 @@ class OrderController {
         return ResponseEntity
                 .created(URI.create("/api/v1/service-orders/" + body.orderId()))
                 .body(body);
-    }
-
-    @GetMapping("/{orderId}")
-    OrderResponse findMine(
-            @CurrentClientId UUID clientId,
-            @PathVariable UUID orderId) {
-
-        return OrderResponse.from(orders.findForClient(orderId, clientId));
     }
 }

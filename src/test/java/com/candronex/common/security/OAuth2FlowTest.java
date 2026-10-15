@@ -178,7 +178,7 @@ class OAuth2FlowTest {
                     .andExpect(jsonPath("$.token_type").value("Bearer"))
                     .andExpect(jsonPath("$.expires_in").value(properties.accessTokenTtl().toSeconds()))
                     .andExpect(jsonPath("$.scope")
-                            .value("drones:read drones:write orders:read orders:write"))
+                            .value("drones:read drones:write orders:write"))
                     .andReturn().getResponse().getContentAsString();
 
             JsonNode token = json.readTree(body);
@@ -435,10 +435,15 @@ class OAuth2FlowTest {
                     .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, containsString("insufficient_scope")))
                     .andExpect(jsonPath("$.type").value("https://candronex.ca/problems/insufficient-scope"));
 
-            mvc.perform(get("/api/v1/service-orders/" + UUID.randomUUID()).header(HttpHeaders.AUTHORIZATION, bearer(readOnly)))
+            mvc.perform(post("/api/v1/service-orders")
+                            .header(HttpHeaders.AUTHORIZATION, bearer(readOnly))
+                            .header("Idempotency-Key", UUID.randomUUID().toString())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"orderLines\":[]}"))
                     .andExpect(status().isForbidden());
 
             verify(drones, never()).register(any(RegisterDroneCommand.class));
+            verify(orders, never()).placeOrder(any());
         }
 
         @Test

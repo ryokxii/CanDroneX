@@ -5,10 +5,6 @@ import com.candronex.ordermanagement.domain.Order;
 import com.candronex.ordermanagement.domain.port.OrderRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.NoSuchElementException;
-import java.util.UUID;
 
 /** Point d'entrée applicatif d'UC-04 : commander les services de connectivité d'un drone. */
 @Service
@@ -40,13 +36,5 @@ public class PlaceOrderService {
             placedByOtherRequest.verifyReplayOf(command.lineKeys());
             return PlaceOrderResult.replayed(OrderView.from(placedByOtherRequest));
         }
-    }
-
-    /** Une commande du client identifié. */
-    @Transactional(readOnly = true)
-    public OrderView findForClient(UUID orderId, UUID clientId) {
-        return orders.findByIdAndClientId(orderId, clientId)
-                .map(OrderView::from)
-                .orElseThrow(() -> new NoSuchElementException("Commande introuvable : " + orderId));
     }
 }
