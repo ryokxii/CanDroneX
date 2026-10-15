@@ -1,54 +1,34 @@
 package com.candronex.ordermanagement.domain;
 
 import com.candronex.servicecatalog.published.ServiceType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
 
 import java.util.Objects;
 import java.util.UUID;
 
-/** Élément d'une commande : un service pour un drone. */
-@Entity
-@Table(schema = "orders", name = "order_lines")
-public class OrderLine {
+/** Entité de l'agrégat Order : un service pour un drone, et l'état de son traitement. */
+public final class OrderLine {
 
-    @Id
-    @Column(name = "order_line_id", nullable = false, updatable = false)
-    private UUID orderLineId;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", nullable = false)
-    private Order order;
-
-    @Column(name = "drone_id", nullable = false, updatable = false)
-    private UUID droneId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "service_type", nullable = false, length = 24)
-    private ServiceType serviceType;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 24)
+    private final UUID orderLineId;
+    private final UUID droneId;
+    private final ServiceType serviceType;
     private OrderStatus status;
 
-    /** Requis par l'ORM ; jamais appelé par le domaine. */
-    protected OrderLine() {
+    private OrderLine(UUID orderLineId, UUID droneId, ServiceType serviceType, OrderStatus status) {
+        this.orderLineId = Objects.requireNonNull(orderLineId, "orderLineId");
+        this.droneId = Objects.requireNonNull(droneId, "droneId");
+        this.serviceType = Objects.requireNonNull(serviceType, "serviceType");
+        this.status = Objects.requireNonNull(status, "status");
     }
 
     /** Visible de l'agrégat seul : une ligne ne se crée que par Order.addLine. */
-    OrderLine(Order order, UUID droneId, ServiceType serviceType) {
-        this.orderLineId = UUID.randomUUID();
-        this.order = order;
-        this.droneId = droneId;
-        this.serviceType = serviceType;
-        this.status = OrderStatus.RECEIVED;
+    static OrderLine receive(UUID droneId, ServiceType serviceType) {
+        return new OrderLine(UUID.randomUUID(), droneId, serviceType, OrderStatus.RECEIVED);
+    }
+
+    /** Reconstitue une ligne enregistrée ; réservé à l'adaptateur de persistance. */
+    public static OrderLine restore(UUID orderLineId, UUID droneId, ServiceType serviceType,
+                                    OrderStatus status) {
+        return new OrderLine(orderLineId, droneId, serviceType, status);
     }
 
     /** Fait évoluer l'état de la ligne. */
@@ -89,7 +69,7 @@ public class OrderLine {
         if (!(other instanceof OrderLine that)) {
             return false;
         }
-        return Objects.equals(orderLineId, that.orderLineId);
+        return orderLineId.equals(that.orderLineId);
     }
 
     @Override

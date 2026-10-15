@@ -7,19 +7,19 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Adaptateur sortant : réalise le port ClientRepository avec l'ORM. */
+/** Adaptateur sortant : réalise le port ClientRepository et traduit l'agrégat en lignes. */
 @Repository
 class JpaClientRepository implements ClientRepository {
 
-    private final SpringDataClientRepository clients;
+    private final ClientEntityStore clients;
 
-    JpaClientRepository(SpringDataClientRepository clients) {
+    JpaClientRepository(ClientEntityStore clients) {
         this.clients = clients;
     }
 
     @Override
     public Optional<Client> findById(UUID clientId) {
-        return clients.findById(clientId);
+        return clients.findById(clientId).map(ClientEntity::toDomain);
     }
 
     @Override
@@ -29,6 +29,6 @@ class JpaClientRepository implements ClientRepository {
 
     @Override
     public void save(Client client) {
-        clients.save(client);
+        clients.save(ClientEntity.from(client));
     }
 }

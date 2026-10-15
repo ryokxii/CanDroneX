@@ -1,16 +1,6 @@
 package com.candronex.ordermanagement.domain;
 
 import com.candronex.servicecatalog.published.ServiceType;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Embedded;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Id;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -20,58 +10,45 @@ import java.util.Objects;
 import java.util.UUID;
 
 /** Racine d'agrégat du contexte OrderManagement : la commande de services d'un client B2B. */
-@Entity
-@Table(schema = "orders", name = "service_orders")
-public class Order {
+public final class Order {
 
-    @Id
-    @Column(name = "order_id", nullable = false, updatable = false)
-    private UUID orderId;
-
-    @Column(name = "client_id", nullable = false, updatable = false)
-    private UUID clientId;
-
-    @Embedded
-    private IdempotencyKey idempotencyKey;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 24)
+    private final UUID orderId;
+    private final UUID clientId;
+    private final IdempotencyKey idempotencyKey;
+    private final Instant placedAt;
+    private final List<OrderLine> orderLines;
     private OrderStatus status;
-
-    @Column(name = "placed_at", nullable = false)
-    private Instant placedAt;
-
-    @Column(name = "completed_at")
     private Instant completedAt;
 
-    /** Chargement immédiat assumé : on charge un agrégat entier ou pas du tout. */
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL,
-               orphanRemoval = true, fetch = FetchType.EAGER)
-    private List<OrderLine> orderLines = new ArrayList<>();
-
-    /** Requis par l'ORM ; jamais appelé par le domaine. */
-    protected Order() {
-    }
-
-    private Order(UUID orderId, UUID clientId, IdempotencyKey idempotencyKey,
-                  Instant placedAt) {
-        this.orderId = orderId;
-        this.clientId = clientId;
-        this.idempotencyKey = idempotencyKey;
-        this.placedAt = placedAt;
-        this.status = OrderStatus.RECEIVED;
-    }
-
-    /** Ouvre une commande pour un client ; son identifiant est généré, jamais fourni. */
-    public static Order place(UUID clientId, IdempotencyKey idempotencyKey,
-                              Instant placedAt) {
+    private Order(UUID orderId, UUID clientId, IdempotencyKey idempotencyKey, Instant placedAt,
+                  List<OrderLine> orderLines, OrderStatus status, Instant completedAt) {
         if (clientId == null) {
             throw new IllegalArgumentException("L'identifiant du client est obligatoire.");
         }
         if (idempotencyKey == null) {
             throw new IllegalArgumentException("La clé d'idempotence est obligatoire.");
         }
-        return new Order(UUID.randomUUID(), clientId, idempotencyKey, placedAt);
+        this.orderId = Objects.requireNonNull(orderId, "orderId");
+        this.clientId = clientId;
+        this.idempotencyKey = idempotencyKey;
+        this.placedAt = Objects.requireNonNull(placedAt, "placedAt");
+        this.orderLines = new ArrayList<>(orderLines);
+        this.status = Objects.requireNonNull(status, "status");
+        this.completedAt = completedAt;
+    }
+
+    /** Ouvre une commande pour un client ; son identifiant est généré, jamais fourni. */
+    public static Order place(UUID clientId, IdempotencyKey idempotencyKey, Instant placedAt) {
+        return new Order(UUID.randomUUID(), clientId, idempotencyKey, placedAt,
+                List.of(), OrderStatus.RECEIVED, null);
+    }
+
+    /** Reconstitue une commande enregistrée ; réservé à l'adaptateur de persistance. */
+    public static Order restore(UUID orderId, UUID clientId, IdempotencyKey idempotencyKey,
+                                Instant placedAt, List<OrderLine> orderLines,
+                                OrderStatus status, Instant completedAt) {
+        return new Order(orderId, clientId, idempotencyKey, placedAt,
+                orderLines, status, completedAt);
     }
 
     /**
@@ -91,7 +68,7 @@ public class Order {
             throw new DuplicateOrderLineException(droneId, serviceType);
         }
 
-        OrderLine line = new OrderLine(this, droneId, serviceType);
+        OrderLine line = OrderLine.receive(droneId, serviceType);
         orderLines.add(line);
         this.status = deriveStatus();
         return line;
@@ -186,7 +163,7 @@ public class Order {
         if (!(other instanceof Order that)) {
             return false;
         }
-        return Objects.equals(orderId, that.orderId);
+        return orderId.equals(that.orderId);
     }
 
     @Override

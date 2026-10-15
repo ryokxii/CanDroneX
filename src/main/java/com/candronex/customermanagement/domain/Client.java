@@ -1,43 +1,38 @@
 package com.candronex.customermanagement.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-
 import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Racine d'agrégat du contexte CustomerManagement : l'exploitant de drones abonné à la plateforme.
+ *
+ * <p>Le client est identifié par son clientId, généré par la plateforme. Cet identifiant est aussi
+ * le client_id OAuth 2.0 de son ApiCredential et le sujet de ses jetons d'accès.
  */
-@Entity
-@Table(schema = "customer", name = "clients")
-public class Client {
+public final class Client {
 
-    @Id
-    @Column(name = "client_id", nullable = false, updatable = false)
-    private UUID clientId;
-
-    @Column(name = "company_name", nullable = false, length = 120)
-    private String companyName;
-
-
-    /** Requis par l'ORM ; jamais appelé par le domaine. */
-    protected Client() {
-    }
+    private final UUID clientId;
+    private final String companyName;
 
     private Client(UUID clientId, String companyName) {
+        if (clientId == null) {
+            throw new IllegalArgumentException("L'identifiant du client est obligatoire.");
+        }
+        if (companyName == null || companyName.isBlank()) {
+            throw new IllegalArgumentException("La raison sociale est obligatoire.");
+        }
         this.clientId = clientId;
         this.companyName = companyName;
     }
 
-    /** Crée un client B2B ; son identifiant est généré, jamais fourni. */
+    /** Crée un client B2B ; son identifiant est généré, jamais fourni (UC-01). */
     public static Client onboard(String companyName) {
-        if (companyName == null || companyName.isBlank()) {
-            throw new IllegalArgumentException("La raison sociale est obligatoire.");
-        }
         return new Client(UUID.randomUUID(), companyName);
+    }
+
+    /** Reconstitue un client déjà enregistré ; réservé à l'adaptateur de persistance. */
+    public static Client restore(UUID clientId, String companyName) {
+        return new Client(clientId, companyName);
     }
 
     public UUID clientId() {
@@ -57,7 +52,7 @@ public class Client {
         if (!(other instanceof Client that)) {
             return false;
         }
-        return Objects.equals(clientId, that.clientId);
+        return clientId.equals(that.clientId);
     }
 
     @Override

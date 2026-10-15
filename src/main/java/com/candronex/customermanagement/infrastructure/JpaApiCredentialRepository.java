@@ -7,23 +7,23 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Adaptateur sortant : réalise le port ApiCredentialRepository avec l'ORM. */
+/** Adaptateur sortant : réalise le port ApiCredentialRepository et traduit l'agrégat en lignes. */
 @Repository
 class JpaApiCredentialRepository implements ApiCredentialRepository {
 
-    private final SpringDataApiCredentialRepository credentials;
+    private final ApiCredentialEntityStore credentials;
 
-    JpaApiCredentialRepository(SpringDataApiCredentialRepository credentials) {
+    JpaApiCredentialRepository(ApiCredentialEntityStore credentials) {
         this.credentials = credentials;
     }
 
     @Override
     public Optional<ApiCredential> findByClientId(UUID clientId) {
-        return credentials.findById(clientId);
+        return credentials.findById(clientId).map(ApiCredentialEntity::toDomain);
     }
 
     @Override
     public void save(ApiCredential credential) {
-        credentials.save(credential);
+        credentials.save(ApiCredentialEntity.from(credential));
     }
 }

@@ -8,33 +8,35 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Adaptateur sortant : réalise le port DroneRepository avec l'ORM. */
+/** Adaptateur sortant : réalise le port DroneRepository et traduit l'agrégat en lignes. */
 @Repository
 class JpaDroneRepository implements DroneRepository {
 
-    private final SpringDataDroneRepository drones;
+    private final DroneEntityStore drones;
 
-    JpaDroneRepository(SpringDataDroneRepository drones) {
+    JpaDroneRepository(DroneEntityStore drones) {
         this.drones = drones;
     }
 
     @Override
     public boolean existsByImsi(String imsi) {
-        return drones.existsByNetworkIdentityImsi(imsi);
+        return drones.existsByImsi(imsi);
     }
 
     @Override
     public Optional<Drone> findByIdAndClientId(UUID droneId, UUID clientId) {
-        return drones.findByDroneIdAndClientId(droneId, clientId);
+        return drones.findByDroneIdAndClientId(droneId, clientId).map(DroneEntity::toDomain);
     }
 
     @Override
     public List<Drone> findAllByClientId(UUID clientId) {
-        return drones.findAllByClientId(clientId);
+        return drones.findAllByClientIdOrderByRegisteredAt(clientId).stream()
+                .map(DroneEntity::toDomain)
+                .toList();
     }
 
     @Override
     public void save(Drone drone) {
-        drones.save(drone);
+        drones.save(DroneEntity.from(drone));
     }
 }

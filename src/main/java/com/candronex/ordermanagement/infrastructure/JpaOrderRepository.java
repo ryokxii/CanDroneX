@@ -8,28 +8,29 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Adaptateur sortant : réalise le port OrderRepository avec l'ORM. */
+/** Adaptateur sortant : réalise le port OrderRepository et traduit l'agrégat en lignes. */
 @Repository
 class JpaOrderRepository implements OrderRepository {
 
-    private final SpringDataOrderRepository orders;
+    private final OrderEntityStore orders;
 
-    JpaOrderRepository(SpringDataOrderRepository orders) {
+    JpaOrderRepository(OrderEntityStore orders) {
         this.orders = orders;
     }
 
     @Override
     public Optional<Order> findByClientIdAndIdempotencyKey(UUID clientId, IdempotencyKey key) {
-        return orders.findByClientIdAndIdempotencyKey(clientId, key);
+        return orders.findByClientIdAndIdempotencyKey(clientId, key.value())
+                .map(OrderEntity::toDomain);
     }
 
     @Override
     public Optional<Order> findByIdAndClientId(UUID orderId, UUID clientId) {
-        return orders.findByOrderIdAndClientId(orderId, clientId);
+        return orders.findByOrderIdAndClientId(orderId, clientId).map(OrderEntity::toDomain);
     }
 
     @Override
     public void save(Order order) {
-        orders.save(order);
+        orders.save(OrderEntity.from(order));
     }
 }

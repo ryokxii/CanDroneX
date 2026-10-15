@@ -1,63 +1,52 @@
 package com.candronex.dronemanagement.domain;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Embedded;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Racine d'agrégat du contexte DroneManagement. */
-@Entity
-@Table(schema = "drone", name = "drones")
-public class Drone {
+/**
+ * Racine d'agrégat du contexte DroneManagement : un drone d'un client et son identité réseau.
+ *
+ * <p>Le droneId est généré par la plateforme ; la référence que le client donne à son appareil
+ * (DRN-0231) n'est pas un identifiant du système.
+ */
+public final class Drone {
 
-    @Id
-    @Column(name = "drone_id", nullable = false, updatable = false)
-    private UUID droneId;
-
-    @Column(name = "client_id", nullable = false, updatable = false)
-    private UUID clientId;
-
-    @Embedded
-    private NetworkIdentity networkIdentity;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 16)
-    private DroneStatus status;
-
-    @Column(name = "created_at", nullable = false)
-    private Instant registeredAt;
-
-    /** Requis par l'ORM ; jamais appelé par le domaine. */
-    protected Drone() {
-    }
+    private final UUID droneId;
+    private final UUID clientId;
+    private final NetworkIdentity networkIdentity;
+    private final DroneStatus status;
+    private final Instant registeredAt;
 
     private Drone(UUID droneId, UUID clientId, NetworkIdentity networkIdentity,
                   DroneStatus status, Instant registeredAt) {
+        if (droneId == null) {
+            throw new IllegalArgumentException("L'identifiant du drone est obligatoire.");
+        }
+        if (clientId == null) {
+            throw new IllegalArgumentException("L'identifiant du client est obligatoire.");
+        }
+        if (networkIdentity == null) {
+            throw new InvalidNetworkIdentityException("L'identité réseau est obligatoire.");
+        }
         this.droneId = droneId;
         this.clientId = clientId;
         this.networkIdentity = networkIdentity;
-        this.status = status;
-        this.registeredAt = registeredAt;
+        this.status = Objects.requireNonNull(status, "status");
+        this.registeredAt = Objects.requireNonNull(registeredAt, "registeredAt");
     }
 
     /** Enregistre un drone pour un client ; son identifiant est généré, jamais fourni. */
     public static Drone register(UUID clientId, NetworkIdentity networkIdentity,
                                  Instant registeredAt) {
-        if (clientId == null) {
-            throw new InvalidNetworkIdentityException("L'identifiant du client est obligatoire.");
-        }
-        if (networkIdentity == null) {
-            throw new InvalidNetworkIdentityException("L'identité réseau est obligatoire.");
-        }
         return new Drone(UUID.randomUUID(), clientId, networkIdentity,
                 DroneStatus.REGISTERED, registeredAt);
+    }
+
+    /** Reconstitue un drone déjà enregistré ; réservé à l'adaptateur de persistance. */
+    public static Drone restore(UUID droneId, UUID clientId, NetworkIdentity networkIdentity,
+                                DroneStatus status, Instant registeredAt) {
+        return new Drone(droneId, clientId, networkIdentity, status, registeredAt);
     }
 
     /** Un drone n'est consultable et commandable que par son propriétaire. */
@@ -94,7 +83,7 @@ public class Drone {
         if (!(other instanceof Drone that)) {
             return false;
         }
-        return Objects.equals(droneId, that.droneId);
+        return droneId.equals(that.droneId);
     }
 
     @Override
