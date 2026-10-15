@@ -8,6 +8,7 @@ import com.candronex.ordermanagement.domain.DroneNotFoundException;
 import com.candronex.ordermanagement.domain.DuplicateOrderLineException;
 import com.candronex.ordermanagement.domain.IdempotencyKeyConflictException;
 import com.candronex.ordermanagement.domain.UnknownServiceSpecificationException;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -27,7 +28,11 @@ import java.util.NoSuchElementException;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/** Traduit les exceptions en réponses d'erreur, en un seul endroit. */
+/**
+ * Traduit les exceptions en réponses RFC 9457, en un seul endroit : membres normalisés type, title,
+ * status, detail et instance, plus l'extension correlationId. Aucun détail technique ni aucun
+ * identifiant d'abonné n'y figure ; la cause est journalisée sous le même correlationId.
+ */
 @RestControllerAdvice
 class ProblemDetailsHandler {
 
@@ -37,37 +42,37 @@ class ProblemDetailsHandler {
     // ── 400 — la requête n'est pas comprise ──────────────────────────
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    ProblemDetail onInvalidBody(MethodArgumentNotValidException exception) {
+    ProblemDetail onInvalidBody(MethodArgumentNotValidException exception, HttpServletRequest request) {
         String details = exception.getBindingResult().getFieldErrors().stream()
                 .map(error -> error.getField() + " : " + error.getDefaultMessage())
                 .collect(Collectors.joining(" ; "));
-        return problem(HttpStatus.BAD_REQUEST, "validation",
-                "Requête invalide", details);
+        return problem(request, HttpStatus.BAD_REQUEST, "validation", "Requête invalide", details);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    ProblemDetail onUnreadableBody(HttpMessageNotReadableException exception) {
-        return problem(HttpStatus.BAD_REQUEST, "malformed-request",
+    ProblemDetail onUnreadableBody(HttpMessageNotReadableException exception, HttpServletRequest request) {
+        return problem(request, HttpStatus.BAD_REQUEST, "malformed-request",
                 "Corps de requête illisible",
                 "Le corps JSON est mal formé ou contient une valeur hors du contrat.");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    ProblemDetail onIllegalArgument(IllegalArgumentException exception) {
-        return problem(HttpStatus.BAD_REQUEST, "invalid-argument",
+    ProblemDetail onIllegalArgument(IllegalArgumentException exception, HttpServletRequest request) {
+        return problem(request, HttpStatus.BAD_REQUEST, "invalid-argument",
                 "Requête invalide", exception.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    ProblemDetail onMalformedParameter(MethodArgumentTypeMismatchException exception) {
-        return problem(HttpStatus.BAD_REQUEST, "malformed-parameter",
+    ProblemDetail onMalformedParameter(MethodArgumentTypeMismatchException exception,
+                                       HttpServletRequest request) {
+        return problem(request, HttpStatus.BAD_REQUEST, "malformed-parameter",
                 "Paramètre mal formé",
                 "Le paramètre " + exception.getName() + " n'a pas le format attendu.");
     }
 
     @ExceptionHandler(MissingRequestHeaderException.class)
-    ProblemDetail onMissingHeader(MissingRequestHeaderException exception) {
-        return problem(HttpStatus.BAD_REQUEST, "missing-header",
+    ProblemDetail onMissingHeader(MissingRequestHeaderException exception, HttpServletRequest request) {
+        return problem(request, HttpStatus.BAD_REQUEST, "missing-header",
                 "En-tête obligatoire absent",
                 "L'en-tête " + exception.getHeaderName() + " est obligatoire.");
     }
@@ -76,8 +81,8 @@ class ProblemDetailsHandler {
     // Jeton valide mais client disparu ; les autres 401 viennent de la chaîne de sécurité.
 
     @ExceptionHandler(UnknownClientException.class)
-    ProblemDetail onUnknownClient(UnknownClientException exception) {
-        return problem(HttpStatus.UNAUTHORIZED, "unknown-client",
+    ProblemDetail onUnknownClient(UnknownClientException exception, HttpServletRequest request) {
+        return problem(request, HttpStatus.UNAUTHORIZED, "unknown-client",
                 "Client inconnu", "Ce client n'est pas enregistré sur la plateforme.");
     }
 
@@ -85,63 +90,69 @@ class ProblemDetailsHandler {
     // Les deux cas sont volontairement indiscernables.
 
     @ExceptionHandler({DroneNotFoundException.class, NoSuchElementException.class})
-    ProblemDetail onNotFound(RuntimeException exception) {
-        return problem(HttpStatus.NOT_FOUND, "resource-not-found",
+    ProblemDetail onNotFound(RuntimeException exception, HttpServletRequest request) {
+        return problem(request, HttpStatus.NOT_FOUND, "resource-not-found",
                 "Ressource introuvable", exception.getMessage());
     }
 
-    // ── 409 — conflit d'unicité ──────────────────────────────────────
+    // ── 409 — conflit avec l'état existant ───────────────────────────
 
     @ExceptionHandler(DuplicateImsiException.class)
-    ProblemDetail onDuplicateImsi(DuplicateImsiException exception) {
-        return problem(HttpStatus.CONFLICT, "duplicate-imsi",
+    ProblemDetail onDuplicateImsi(DuplicateImsiException exception, HttpServletRequest request) {
+        return problem(request, HttpStatus.CONFLICT, "duplicate-imsi",
                 "IMSI déjà enregistré", exception.getMessage());
     }
 
     @ExceptionHandler(DuplicateIccidException.class)
-    ProblemDetail onDuplicateIccid(DuplicateIccidException exception) {
-        return problem(HttpStatus.CONFLICT, "duplicate-iccid",
+    ProblemDetail onDuplicateIccid(DuplicateIccidException exception, HttpServletRequest request) {
+        return problem(request, HttpStatus.CONFLICT, "duplicate-iccid",
                 "ICCID déjà enregistré", exception.getMessage());
     }
 
     @ExceptionHandler(IdempotencyKeyConflictException.class)
-    ProblemDetail onIdempotencyKeyConflict(IdempotencyKeyConflictException exception) {
-        return problem(HttpStatus.CONFLICT, "idempotency-key-reused",
+    ProblemDetail onIdempotencyKeyConflict(IdempotencyKeyConflictException exception,
+                                           HttpServletRequest request) {
+        return problem(request, HttpStatus.CONFLICT, "idempotency-key-reused",
                 "Clé d'idempotence déjà utilisée", exception.getMessage());
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
-    ProblemDetail onIntegrityViolation(DataIntegrityViolationException exception) {
-        // Le message SQL reste dans les journaux : il nomme des tables.
-        return problem(HttpStatus.CONFLICT, "conflict",
+    ProblemDetail onIntegrityViolation(DataIntegrityViolationException exception,
+                                       HttpServletRequest request) {
+        // Le message SQL n'est pas renvoyé : il nomme des tables et peut contenir des valeurs.
+        return problem(request, HttpStatus.CONFLICT, "conflict",
                 "Conflit", "La ressource existe déjà ou viole une contrainte d'unicité.");
     }
 
     // ── 422 — comprise, mais refusée par une règle du domaine ────────
 
     @ExceptionHandler(InvalidNetworkIdentityException.class)
-    ProblemDetail onInvalidNetworkIdentity(InvalidNetworkIdentityException exception) {
-        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "invalid-network-identity",
+    ProblemDetail onInvalidNetworkIdentity(InvalidNetworkIdentityException exception,
+                                           HttpServletRequest request) {
+        return problem(request, HttpStatus.UNPROCESSABLE_ENTITY, "invalid-network-identity",
                 "Identité réseau invalide", exception.getMessage());
     }
 
     @ExceptionHandler(DuplicateOrderLineException.class)
-    ProblemDetail onDuplicateOrderLine(DuplicateOrderLineException exception) {
-        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "duplicate-order-line",
+    ProblemDetail onDuplicateOrderLine(DuplicateOrderLineException exception,
+                                       HttpServletRequest request) {
+        return problem(request, HttpStatus.UNPROCESSABLE_ENTITY, "duplicate-order-line",
                 "Ligne de commande en double", exception.getMessage());
     }
 
     @ExceptionHandler(UnknownServiceSpecificationException.class)
-    ProblemDetail onUnknownServiceSpecification(UnknownServiceSpecificationException exception) {
-        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "unknown-service-specification",
+    ProblemDetail onUnknownServiceSpecification(UnknownServiceSpecificationException exception,
+                                                HttpServletRequest request) {
+        return problem(request, HttpStatus.UNPROCESSABLE_ENTITY, "unknown-service-specification",
                 "Service hors catalogue", exception.getMessage());
     }
 
     // ── 415 — format de corps non accepté ────────────────────────────
 
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
-    ProblemDetail onUnsupportedMediaType(HttpMediaTypeNotSupportedException exception) {
-        return problem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported-media-type",
+    ProblemDetail onUnsupportedMediaType(HttpMediaTypeNotSupportedException exception,
+                                         HttpServletRequest request) {
+        return problem(request, HttpStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported-media-type",
                 "Type de contenu non pris en charge",
                 "Types acceptés : " + exception.getSupportedMediaTypes());
     }
@@ -149,24 +160,31 @@ class ProblemDetailsHandler {
     // ── 500 — tout le reste ──────────────────────────────────────────
 
     @ExceptionHandler(Exception.class)
-    ProblemDetail onUnexpected(Exception exception) {
-        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal-error",
+    ProblemDetail onUnexpected(Exception exception, HttpServletRequest request) {
+        String correlationId = UUID.randomUUID().toString();
+        log.error("[{}] Erreur inattendue", correlationId, exception);
+        return build(request, correlationId, HttpStatus.INTERNAL_SERVER_ERROR, "internal-error",
                 "Erreur interne",
                 "Une erreur inattendue est survenue. Citez le correlationId au support.");
     }
 
     /** Construit la réponse et journalise la cause avec le même identifiant. */
-    private ProblemDetail problem(HttpStatusCode status, String type,
-                                  String title, String detail) {
+    private static ProblemDetail problem(HttpServletRequest request, HttpStatusCode status,
+                                         String type, String title, String detail) {
         String correlationId = UUID.randomUUID().toString();
+        log.warn("[{}] {} — {} : {}", correlationId, status.value(), title, detail);
+        return build(request, correlationId, status, type, title, detail);
+    }
 
+    private static ProblemDetail build(HttpServletRequest request, String correlationId,
+                                       HttpStatusCode status, String type, String title,
+                                       String detail) {
         ProblemDetail problem = ProblemDetail.forStatus(status);
         problem.setType(URI.create(BASE_TYPE + type));
         problem.setTitle(title);
         problem.setDetail(detail);
+        problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("correlationId", correlationId);
-
-        log.warn("[{}] {} — {} : {}", correlationId, status.value(), title, detail);
         return problem;
     }
 }

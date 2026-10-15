@@ -39,7 +39,7 @@ class ProblemDetailsSecurityHandler implements AuthenticationEntryPoint, AccessD
     public void commence(HttpServletRequest request, HttpServletResponse response,
                          AuthenticationException exception) throws IOException {
         bearerEntryPoint.commence(request, response, exception);
-        write(response, HttpStatus.UNAUTHORIZED, "unauthenticated", "Authentification requise",
+        write(request, response, HttpStatus.UNAUTHORIZED, "unauthenticated", "Authentification requise",
                 "Un jeton d'accès Bearer valide est obligatoire. Obtenez-le sur /oauth2/token.");
     }
 
@@ -47,16 +47,17 @@ class ProblemDetailsSecurityHandler implements AuthenticationEntryPoint, AccessD
     public void handle(HttpServletRequest request, HttpServletResponse response,
                        AccessDeniedException exception) throws IOException {
         bearerAccessDenied.handle(request, response, exception);
-        write(response, HttpStatus.FORBIDDEN, "insufficient-scope", "Portée insuffisante",
+        write(request, response, HttpStatus.FORBIDDEN, "insufficient-scope", "Portée insuffisante",
                 "Le jeton ne porte pas la portée requise pour cette opération.");
     }
 
-    private void write(HttpServletResponse response, HttpStatus status, String type,
-                       String title, String detail) throws IOException {
+    private void write(HttpServletRequest request, HttpServletResponse response, HttpStatus status,
+                       String type, String title, String detail) throws IOException {
         String correlationId = UUID.randomUUID().toString();
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setType(URI.create(BASE_TYPE + type));
         problem.setTitle(title);
+        problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("correlationId", correlationId);
 
         log.warn("[{}] {} — {}", correlationId, status.value(), title);
