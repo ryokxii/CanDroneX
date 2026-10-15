@@ -20,13 +20,13 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
     private JdbcTemplate jdbc;
 
     @Test
-    @DisplayName("les sept migrations sont appliquées avec succès")
+    @DisplayName("les huit migrations sont appliquées avec succès")
     void appliesAllMigrations() {
         List<String> applied = jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true ORDER BY installed_rank",
                 String.class);
 
-        assertThat(applied).containsExactly("1", "2", "3", "4", "5", "6", "7");
+        assertThat(applied).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
     }
 
     @Test
@@ -40,8 +40,7 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
                 """,
                 String.class);
 
-        // ServiceCatalog n'a pas de schéma : son offre est figée dans le code.
-        assertThat(schemas).containsExactly("customer", "drone", "orders", "public");
+        assertThat(schemas).containsExactly("catalog", "customer", "drone", "orders", "public");
     }
 
     @Test
@@ -50,12 +49,14 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
         List<String> tables = jdbc.queryForList(
                 """
                 SELECT table_schema || '.' || table_name FROM information_schema.tables
-                WHERE table_schema IN ('customer', 'drone', 'orders')
+                WHERE table_schema IN ('catalog', 'customer', 'drone', 'orders')
                 ORDER BY 1
                 """,
                 String.class);
 
         assertThat(tables).containsExactly(
+                "catalog.characteristic_specifications",
+                "catalog.service_specifications",
                 "customer.api_credentials",
                 "customer.clients",
                 "drone.drones",
@@ -107,5 +108,22 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
                 .isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM orders.service_orders", Integer.class))
                 .isZero();
+    }
+
+    @Test
+    @DisplayName("le catalogue publie les deux services de la commande de référence")
+    void seedsTheReferenceCatalog() {
+        List<String> characteristics = jdbc.queryForList(
+                """
+                SELECT service_specification_id || '.' || name || '=' || default_value
+                FROM catalog.characteristic_specifications
+                WHERE name IN ('sst', 'sd', 'arp')
+                ORDER BY service_specification_id, position
+                """,
+                String.class);
+
+        assertThat(characteristics).containsExactly(
+                "C2_URLLC.sst=2", "C2_URLLC.sd=000001", "C2_URLLC.arp=2",
+                "IMAGERY_EMBB.sst=1", "IMAGERY_EMBB.sd=000002", "IMAGERY_EMBB.arp=8");
     }
 }
