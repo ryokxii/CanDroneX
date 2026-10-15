@@ -1,0 +1,181 @@
+@startuml structure-module-order
+title Structure interne du module OrderManagement — ports et adaptateurs (CanDroneX)
+
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam ArrowFontSize 10
+skinparam packageStyle rectangle
+skinparam package {
+  BackgroundColor #FBFCFE
+  BorderColor #9AA9BC
+}
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #2F4A6D
+}
+skinparam interface {
+  BackgroundColor #FFF3D6
+  BorderColor #D79B00
+}
+skinparam nodesep 25
+skinparam ranksep 45
+skinparam arrow {
+  Color #2F4A6D
+}
+
+class "Système du client B2B" as client <<(X,#AAAAAA) external system>>
+
+package "Module OrderManagement" {
+
+  package "api — adaptateurs entrants" as apiLayer {
+    class OrderController <<(A,#6C8EBF) adapter>> {
+      POST /api/v1/service-orders
+      --
+      valide la forme de la requête
+      201 à la création, 200 au rejeu
+    }
+    class "OrderRequest / OrderResponse" as dto <<(D,#B8C4D4) DTO>>
+  }
+
+  package "Service Applicatif" as appLayer {
+    class PlaceOrderService <<(S,#D79B00) application service>> {
+      placeOrder(PlaceOrderCommand) : PlaceOrderResult
+      --
+      **hors transaction**
+      rattrape le rejeu simultané
+      en relisant la commande
+    }
+    class OrderPlacement <<(S,#D79B00) application service>> {
+      place(PlaceOrderCommand, IdempotencyKey) : PlaceOrderResult
+      --
+      **porte la transaction**
+      vérifie la clé et le contenu du rejeu,
+      fige le service commandé
+    }
+    class PlaceOrderResult <<(D,#B8C4D4) DTO>> {
+      order : OrderView
+      created : boolean
+    }
+    class ActivationResultHandler <<(S,#D79B00) application service — prévu>> #line.dashed {
+      reçoit ServiceActivated, ServiceActivationFailed
+      --
+      appelle Order.updateLineStatus
+    }
+  }
+
+  package "domain — sans dépendance au cadriciel ni à l'ORM" as domainLayer {
+    class Order <<(R,#2F4A6D) AggregateRoot>> {
+      orderId, clientId
+      idempotencyKey
+      status : OrderStatus
+      --
+      addLine(droneId, OrderedService)
+      updateLineStatus(orderLineId, OrderLineStatus, instant)
+      verifyReplayOf(lignes demandées)
+    }
+    class OrderLine <<(E,#6C8EBF) Entity>> {
+      orderLineId
+      droneId
+      status : OrderLineStatus
+    }
+    class OrderedService <<(V,#82B366) ValueObject>> {
+      serviceSpecificationId
+      serviceSpecificationVersion
+      characteristics : ServiceCharacteristic
+    }
+    class OrderStatusPolicy <<(D,#9673A6) domain service>> {
+      derive(états des lignes) : OrderStatus
+    }
+    class "OrderStatus / OrderLineStatus" as statuses <<(V,#82B366) ValueObject>>
+    class IdempotencyKey <<(V,#82B366) ValueObject>>
+    interface OrderRepository <<(P,#D79B00) port sortant>> {
+      save(order)
+      findByClientIdAndIdempotencyKey(clientId, key)
+    }
+  }
+
+  package "infrastructure — adaptateurs sortants" as infraLayer {
+    class JpaOrderRepository <<(A,#6C8EBF) adapter>> {
+      traduit l'agrégat en lignes,
+      et les lignes en agrégat
+    }
+    class "OrderEntity / OrderLineEntity" as entities <<(D,#B8C4D4) correspondance relationnelle>> {
+      schéma orders
+    }
+  }
+}
+
+package "Hors du module" as hors {
+  entity "Schéma **orders**" as db <<(B,#7A8899) schéma relationnel>> {
+    service_orders
+    order_lines
+    order_line_characteristics
+  }
+  interface ClientDirectory <<(I,#9AA9BC) interface publiée>> {
+    publiée par CustomerManagement
+    --
+    exists(clientId)
+  }
+  interface DroneDirectory <<(I,#9AA9BC) interface publiée>> {
+    publiée par DroneManagement
+    --
+    findForClient(droneId, clientId)
+  }
+  interface ServiceCatalog <<(I,#9AA9BC) interface publiée>> {
+    publiée par ServiceCatalog
+    --
+    findSpecification(serviceSpecificationId)
+  }
+  interface "ServiceActivation" as activation <<(I,#9AA9BC) interface publiée — prévue>> #line.dashed {
+    publiée par ServiceActivation
+    --
+    request(orderLineId, droneId, service)
+  }
+}
+
+' ── Entrée ──
+client --> OrderController : HTTPS / JSON\njeton Bearer
+OrderController ..> PlaceOrderService : <<use>>
+PlaceOrderService ..> PlaceOrderResult : <<return>>
+PlaceOrderService ..> OrderPlacement : <<use>>
+
+' ── Application et domaine ──
+OrderPlacement ..> Order : <<use>>
+Order *-- "1..*" OrderLine
+OrderLine *-- OrderedService
+Order ..> OrderStatusPolicy : état dérivé
+
+' ── Ports sortants et adaptateurs ──
+OrderPlacement ..> OrderRepository : <<use>>
+PlaceOrderService ..> OrderRepository : <<use>>
+JpaOrderRepository ..|> OrderRepository
+JpaOrderRepository ..> entities : <<use>>
+entities --> db : SQL
+
+' ── Dépendances : vers les contrats publiés, jamais vers les modules ──
+OrderPlacement ..> ClientDirectory : <<use>>
+OrderPlacement ..> DroneDirectory : <<use>>
+OrderPlacement ..> ServiceCatalog : <<use>>
+
+' ── Retour d'activation, prévu ──
+OrderPlacement .[#7A8899].> activation : demande l'activation\ndes lignes — prévu
+activation .[#B85450].> ActivationResultHandler : résultat d'activation\n(événement) — prévu
+ActivationResultHandler .[#7A8899].> Order : <<use>>
+
+legend right
+  <<port sortant>> : interface déclarée par le module pour exprimer un besoin.
+  <<adapter>> : réalisation technique d'un port (REST, base de données).
+  <<interface publiée>> : contrat exposé par un module voisin ;
+  OrderManagement dépend du contrat, jamais du module qui le réalise.
+
+  Le domaine ne porte aucune annotation de l'ORM : la correspondance
+  relationnelle vit dans OrderEntity et OrderLineEntity, et l'adaptateur
+  traduit dans les deux sens (ADR-003).
+
+  Deux classes pour deux transactions successives : quand la contrainte
+  UNIQUE (client_id, idempotency_key) se déclenche, la transaction de
+  OrderPlacement est perdue, et la relecture a lieu dans PlaceOrderService.
+
+  **Pointillé** : prévu — retour d'activation par événement (UC-06).
+endlegend
+@enduml
