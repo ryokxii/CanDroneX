@@ -1,0 +1,62 @@
+@startuml modules-schemas
+title Propriété des données — un module, un schéma (CanDroneX)
+
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam componentStyle rectangle
+skinparam component {
+  BackgroundColor #F4F7FB
+  BorderColor #2F4A6D
+}
+skinparam node {
+  BackgroundColor #FFFFFF
+  BorderColor #2F4A6D
+}
+skinparam database {
+  BackgroundColor #FFFFFF
+  BorderColor #2F4A6D
+}
+skinparam arrow {
+  Color #2F4A6D
+  FontSize 10
+}
+
+left to right direction
+
+node "Monolithe CanDroneX" as mono {
+  component "CustomerManagement" as customer
+  component "DroneManagement" as drone
+  component "ServiceCatalog" as catalog
+  component "OrderManagement" as order
+  component "ServiceInventory — prévu" as inventory #line.dashed
+  component "ServiceActivation — prévu" as activation #line.dashed
+  component "AuditTrail — prévu" as audit #line.dashed
+}
+
+node "Base de données unique — PostgreSQL" as db {
+  database "schéma **customer**\nclients, api_credentials" as db_customer
+  database "schéma **drone**\ndrones — seul à contenir IMSI et ICCID" as db_drone
+  database "schéma **catalog**\nservice_specifications,\ncharacteristic_specifications" as db_catalog
+  database "schéma **orders**\nservice_orders, order_lines,\norder_line_characteristics" as db_orders
+  database "schéma **inventory** — prévu\nservices" as db_inventory #line.dashed
+  database "schéma **activation** — prévu\nservices, activation_attempts" as db_activation #line.dashed
+  database "schéma **audit** — prévu\naudit_entries (ajout seul)" as db_audit #line.dashed
+}
+
+customer --> db_customer : lecture / écriture
+drone --> db_drone : lecture / écriture
+catalog --> db_catalog : lecture ;\nalimenté par migration
+order --> db_orders : lecture / écriture
+inventory -[#2F4A6D,dashed]-> db_inventory : lecture / écriture
+activation -[#2F4A6D,dashed]-> db_activation : lecture / écriture
+audit -[#2F4A6D,dashed]-> db_audit : écriture seule
+
+legend right
+  **Trait plein** : implémenté.  **Pointillé** : prévu.
+  Chaque module lit et écrit exclusivement son propre schéma : aucun accès aux
+  tables d'un autre module, aucune jointure ni clé étrangère inter-schémas, aucune
+  transaction couvrant deux modules. Les références entre contextes se font par
+  identifiant seulement. Ces règles sont vérifiées par les tests d'intégration.
+  C'est ce qui rend chaque module extractible en service autonome à la Phase 2.
+endlegend
+@enduml
