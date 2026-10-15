@@ -1,0 +1,146 @@
+@startuml sequence-uc04-creer-commande
+title UC-04 — Commander les services de connectivité d'un drone
+
+hide footbox
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam sequenceMessageAlign center
+skinparam ParticipantPadding 10
+skinparam BoxPadding 10
+skinparam sequence {
+  ArrowColor #2F4A6D
+  LifeLineBorderColor #9AA9BC
+  ParticipantBorderColor #2F4A6D
+  ParticipantBackgroundColor #F4F7FB
+  GroupBorderColor #9AA9BC
+  GroupBackgroundColor #F4F7FB
+}
+
+actor "Client B2B" as client
+participant "Validation du jeton\n<<adaptateur entrant>>" as auth
+box "Module OrderManagement" #FBFCFE
+  participant "OrderController\n<<adaptateur entrant>>" as ctrl
+  participant "PlaceOrderService\n<<service applicatif>>\nhors transaction" as svc
+  participant "OrderPlacement\n<<service applicatif>>\nporte la transaction" as placement
+  participant "Order\n<<agrégat>>" as order
+  participant "OrderRepository\n<<port sortant>>" as repo
+end box
+participant "ClientDirectory\n<<interface publiée>>" as clientDir
+participant "DroneDirectory\n<<interface publiée>>" as droneDir
+participant "ServiceCatalog\n<<interface publiée>>" as catalog
+participant "Traduction des erreurs\nRFC 9457" as handler
+database "Schéma orders" as db
+
+client -> auth : POST /api/v1/service-orders\nAuthorization: Bearer <jeton> · Idempotency-Key · OrderRequest
+activate auth
+
+break jeton invalide (401) ou sans la portée orders:write (403)
+  auth --> client : 401 ou 403 : ProblemDetail
+end
+
+auth -> ctrl : clientId = sujet du jeton
+deactivate auth
+activate ctrl
+
+break Idempotency-Key absent, aucune ligne, droneId ou serviceSpecificationId absent
+  ctrl --> handler : requête invalide
+  handler --> client : 400 Bad Request : ProblemDetail
+end
+
+ctrl -> svc : placeOrder(PlaceOrderCommand) : PlaceOrderResult
+activate svc
+svc -> placement : place(PlaceOrderCommand, IdempotencyKey)
+activate placement
+
+group Transaction — un cas d'utilisation, une transaction
+  placement -> repo : findByClientIdAndIdempotencyKey(clientId, clé)
+  activate repo
+  repo -> db : SELECT ... WHERE client_id = ? AND idempotency_key = ?
+  repo --> placement : Optional<Order>
+  deactivate repo
+
+  opt la clé est déjà connue pour ce client — rejeu séquentiel
+    placement -> order : verifyReplayOf(lignes demandées)
+    break contenu différent
+      order --> handler : IdempotencyKeyConflictException
+      handler --> client : 409 Conflict : ProblemDetail
+    end
+    placement --> svc : PlaceOrderResult(created = false)
+    svc --> ctrl : PlaceOrderResult
+    ctrl --> client : 200 OK : OrderResponse — la commande existante
+  end
+
+  placement -> clientDir : exists(clientId)
+  break client inconnu
+    placement --> handler : UnknownClientException
+    handler --> client : 401 Unauthorized : ProblemDetail
+  end
+
+  placement -> order : place(clientId, clé, placedAt) : Order
+
+  loop pour chaque ligne demandée
+    placement -> droneDir : findForClient(droneId, clientId)
+    break drone inconnu ou d'un autre client — indiscernables
+      placement --> handler : DroneNotFoundException
+      handler --> client : 404 Not Found : ProblemDetail
+    end
+
+    placement -> catalog : findSpecification(serviceSpecificationId)
+    catalog --> placement : version et caractéristiques
+    break service hors catalogue
+      placement --> handler : UnknownServiceSpecificationException
+      handler --> client : 422 Unprocessable Content : ProblemDetail
+    end
+
+    placement -> order : addLine(droneId, OrderedService — caractéristiques figées)
+    activate order
+    break même couple drone et spécification déjà présent
+      order --> handler : DuplicateOrderLineException
+      handler --> client : 422 Unprocessable Content : ProblemDetail
+    end
+    deactivate order
+  end
+
+  placement -> repo : save(Order)
+  activate repo
+  repo -> db : INSERT service_orders, order_lines,\norder_line_characteristics
+  deactivate repo
+end
+
+== Validation de la transaction ==
+
+alt rejeu simultané — violation de UNIQUE (client_id, idempotency_key)
+  db --> placement : violation de contrainte d'unicité
+  placement --> svc : conflit de persistance
+  svc -> repo : findByClientIdAndIdempotencyKey — nouvelle transaction
+  repo --> svc : la commande créée par la requête concurrente
+  svc -> order : verifyReplayOf(lignes demandées)
+  break contenu différent
+    order --> handler : IdempotencyKeyConflictException
+    handler --> client : 409 Conflict : ProblemDetail
+  end
+  svc --> ctrl : PlaceOrderResult(created = false)
+  ctrl --> client : 200 OK : OrderResponse
+else création
+  placement --> svc : PlaceOrderResult(created = true)
+  deactivate placement
+  svc --> ctrl : PlaceOrderResult
+  deactivate svc
+  ctrl --> client : 201 Created · Location : OrderResponse
+  deactivate ctrl
+end
+
+legend right
+  **break** : sortie exceptionnelle ; la transaction est annulée —
+  ni commande, ni ligne — et la réponse indiquée est retournée.
+
+  Idempotence : même client, même clé, même contenu → même commande (200) ;
+  même clé, contenu différent → 409. L'ordre des lignes n'entre pas en compte.
+  La relecture du rejeu simultané a lieu hors de la transaction perdue.
+
+  Les caractéristiques sont copiées du catalogue à la soumission : une
+  évolution de l'offre ne modifie pas une commande passée.
+  Le service applicatif ne connaît pas HTTP : il retourne PlaceOrderResult,
+  et c'est le contrôleur qui en déduit 201 ou 200.
+endlegend
+@enduml
