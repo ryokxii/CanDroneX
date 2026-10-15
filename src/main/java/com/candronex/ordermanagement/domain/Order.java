@@ -1,7 +1,5 @@
 package com.candronex.ordermanagement.domain;
 
-import com.candronex.servicecatalog.published.ServiceType;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -9,7 +7,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Racine d'agrégat du contexte OrderManagement : la commande de services d'un client B2B. */
+/** Racine d'agrégat du contexte OrderManagement (TMF641) : la commande de services d'un client B2B. */
 public final class Order {
 
     private final UUID orderId;
@@ -53,22 +51,21 @@ public final class Order {
 
     /**
      * Ajoute une ligne et applique l'invariant de l'agrégat : au plus une ligne par couple drone +
-     * type de service.
+     * spécification de service.
      */
-    public OrderLine addLine(UUID droneId, ServiceType serviceType) {
+    public OrderLine addLine(UUID droneId, OrderedService service) {
         if (droneId == null) {
             throw new IllegalArgumentException("L'identifiant du drone est obligatoire.");
         }
-        if (serviceType == null) {
-            throw new IllegalArgumentException("Le type de service est obligatoire.");
+        if (service == null) {
+            throw new IllegalArgumentException("Le service commandé est obligatoire.");
         }
-        boolean alreadyRequested = orderLines.stream()
-                .anyMatch(line -> line.targets(droneId, serviceType));
-        if (alreadyRequested) {
-            throw new DuplicateOrderLineException(droneId, serviceType);
+        OrderLineKey key = new OrderLineKey(droneId, service.serviceSpecificationId());
+        if (orderLines.stream().anyMatch(line -> line.key().equals(key))) {
+            throw new DuplicateOrderLineException(droneId, service.serviceSpecificationId());
         }
 
-        OrderLine line = OrderLine.receive(droneId, serviceType);
+        OrderLine line = OrderLine.receive(droneId, service);
         orderLines.add(line);
         this.status = deriveStatus();
         return line;
@@ -150,7 +147,7 @@ public final class Order {
         return completedAt;
     }
 
-    /** Vue non modifiable : les lignes ne s'ajoutent que par addLine. */
+    /** Dans l'ordre de la demande ; vue non modifiable : les lignes ne s'ajoutent que par addLine. */
     public List<OrderLine> orderLines() {
         return Collections.unmodifiableList(orderLines);
     }

@@ -12,8 +12,9 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 import java.util.UUID;
 
-import static com.candronex.servicecatalog.published.ServiceType.C2_URLLC;
-import static com.candronex.servicecatalog.published.ServiceType.IMAGERY_EMBB;
+import static com.candronex.ordermanagement.CatalogFixtures.C2;
+import static com.candronex.ordermanagement.CatalogFixtures.c2;
+import static com.candronex.ordermanagement.CatalogFixtures.imagery;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -31,24 +32,28 @@ class OrderTest {
     }
 
     @Test
-    @DisplayName("une ligne ajoutée naît à l'état RECEIVED")
+    @DisplayName("une ligne ajoutée naît à l'état RECEIVED avec le service commandé figé")
     void newLineStartsAsReceived() {
         Order order = anOrder();
 
-        OrderLine line = order.addLine(DRONE, C2_URLLC);
+        OrderLine line = order.addLine(DRONE, c2());
 
         assertThat(line.status()).isEqualTo(OrderStatus.RECEIVED);
         assertThat(line.droneId()).isEqualTo(DRONE);
+        assertThat(line.service().serviceSpecificationId()).isEqualTo(C2);
+        assertThat(line.service().characteristics())
+                .extracting(characteristic -> characteristic.name() + "=" + characteristic.value())
+                .contains("sst=2", "sd=000001", "dnn=c2", "fiveQi=7", "arp=2");
         assertThat(order.orderLines()).hasSize(1);
     }
 
     @Test
-    @DisplayName("refuse deux lignes pour le même couple drone et type de service")
+    @DisplayName("refuse deux lignes pour le même couple drone et spécification")
     void rejectsDuplicateLine() {
         Order order = anOrder();
-        order.addLine(DRONE, C2_URLLC);
+        order.addLine(DRONE, c2());
 
-        assertThatThrownBy(() -> order.addLine(DRONE, C2_URLLC))
+        assertThatThrownBy(() -> order.addLine(DRONE, c2()))
                 .isInstanceOf(DuplicateOrderLineException.class);
 
         assertThat(order.orderLines()).hasSize(1);
@@ -59,8 +64,8 @@ class OrderTest {
     void acceptsDifferentServicesForSameDrone() {
         Order order = anOrder();
 
-        order.addLine(DRONE, C2_URLLC);
-        order.addLine(DRONE, IMAGERY_EMBB);
+        order.addLine(DRONE, c2());
+        order.addLine(DRONE, imagery());
 
         assertThat(order.orderLines()).hasSize(2);
     }
@@ -69,7 +74,7 @@ class OrderTest {
     @DisplayName("les lignes ne sont pas modifiables de l'extérieur")
     void exposesLinesAsReadOnly() {
         Order order = anOrder();
-        order.addLine(DRONE, C2_URLLC);
+        order.addLine(DRONE, c2());
 
         assertThatThrownBy(() -> order.orderLines().clear())
                 .isInstanceOf(UnsupportedOperationException.class);
@@ -83,8 +88,8 @@ class OrderTest {
         @DisplayName("toutes les lignes RECEIVED donnent une commande RECEIVED")
         void allReceived() {
             Order order = anOrder();
-            order.addLine(DRONE, C2_URLLC);
-            order.addLine(DRONE, IMAGERY_EMBB);
+            order.addLine(DRONE, c2());
+            order.addLine(DRONE, imagery());
 
             assertThat(order.status()).isEqualTo(OrderStatus.RECEIVED);
         }
@@ -93,8 +98,8 @@ class OrderTest {
         @DisplayName("une ligne encore en cours donne une commande IN_PROGRESS")
         void someStillRunning() {
             Order order = anOrder();
-            UUID first = order.addLine(DRONE, C2_URLLC).orderLineId();
-            order.addLine(DRONE, IMAGERY_EMBB);
+            UUID first = order.addLine(DRONE, c2()).orderLineId();
+            order.addLine(DRONE, imagery());
 
             order.updateLineStatus(first, OrderStatus.COMPLETED, NOW);
 
@@ -105,8 +110,8 @@ class OrderTest {
         @DisplayName("toutes les lignes COMPLETED donnent une commande COMPLETED")
         void allCompleted() {
             Order order = anOrder();
-            UUID first = order.addLine(DRONE, C2_URLLC).orderLineId();
-            UUID second = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
+            UUID first = order.addLine(DRONE, c2()).orderLineId();
+            UUID second = order.addLine(DRONE, imagery()).orderLineId();
 
             order.updateLineStatus(first, OrderStatus.COMPLETED, NOW);
             order.updateLineStatus(second, OrderStatus.COMPLETED, NOW);
@@ -119,8 +124,8 @@ class OrderTest {
         @DisplayName("un service rendu et un en échec donnent PARTIALLY_COMPLETED")
         void mixedOutcomesArePartial() {
             Order order = anOrder();
-            UUID c2 = order.addLine(DRONE, C2_URLLC).orderLineId();
-            UUID imagery = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
+            UUID c2 = order.addLine(DRONE, c2()).orderLineId();
+            UUID imagery = order.addLine(DRONE, imagery()).orderLineId();
 
             order.updateLineStatus(c2, OrderStatus.COMPLETED, NOW);
             order.updateLineStatus(imagery, OrderStatus.FAILED, NOW);
@@ -134,8 +139,8 @@ class OrderTest {
         @DisplayName("aucune ligne rendue donne une commande FAILED")
         void noneCompletedIsFailed() {
             Order order = anOrder();
-            UUID c2 = order.addLine(DRONE, C2_URLLC).orderLineId();
-            UUID imagery = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
+            UUID c2 = order.addLine(DRONE, c2()).orderLineId();
+            UUID imagery = order.addLine(DRONE, imagery()).orderLineId();
 
             order.updateLineStatus(c2, OrderStatus.FAILED, NOW);
             order.updateLineStatus(imagery, OrderStatus.CANCELLED, NOW);
@@ -147,8 +152,8 @@ class OrderTest {
         @DisplayName("toutes les lignes annulées donnent une commande CANCELLED")
         void allCancelled() {
             Order order = anOrder();
-            UUID c2 = order.addLine(DRONE, C2_URLLC).orderLineId();
-            UUID imagery = order.addLine(DRONE, IMAGERY_EMBB).orderLineId();
+            UUID c2 = order.addLine(DRONE, c2()).orderLineId();
+            UUID imagery = order.addLine(DRONE, imagery()).orderLineId();
 
             order.updateLineStatus(c2, OrderStatus.CANCELLED, NOW);
             order.updateLineStatus(imagery, OrderStatus.CANCELLED, NOW);
@@ -160,7 +165,7 @@ class OrderTest {
         @DisplayName("une ligne ne peut pas être partiellement rendue")
         void lineCannotBePartiallyCompleted() {
             Order order = anOrder();
-            UUID line = order.addLine(DRONE, C2_URLLC).orderLineId();
+            UUID line = order.addLine(DRONE, c2()).orderLineId();
 
             assertThatThrownBy(() ->
                     order.updateLineStatus(line, OrderStatus.PARTIALLY_COMPLETED, NOW))

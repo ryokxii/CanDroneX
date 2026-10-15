@@ -20,13 +20,13 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
     private JdbcTemplate jdbc;
 
     @Test
-    @DisplayName("les huit migrations sont appliquées avec succès")
+    @DisplayName("les neuf migrations sont appliquées avec succès")
     void appliesAllMigrations() {
         List<String> applied = jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true ORDER BY installed_rank",
                 String.class);
 
-        assertThat(applied).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
+        assertThat(applied).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
     }
 
     @Test
@@ -60,6 +60,7 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
                 "customer.api_credentials",
                 "customer.clients",
                 "drone.drones",
+                "orders.order_line_characteristics",
                 "orders.order_lines",
                 "orders.service_orders");
     }

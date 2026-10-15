@@ -1,7 +1,7 @@
 package com.candronex.ordermanagement.api;
 
-import com.candronex.servicecatalog.published.ServiceType;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
@@ -15,12 +15,13 @@ public record OrderRequest(
         @Valid
         List<OrderLineRequest> orderLines) {
 
+    /** Une ligne : un service du catalogue, désigné par sa spécification, pour un drone. */
     public record OrderLineRequest(
 
             @NotNull(message = "droneId est obligatoire")
             UUID droneId,
 
-            @NotNull(message = "serviceType est obligatoire")
-            ServiceType serviceType) {
+            @NotBlank(message = "serviceSpecificationId est obligatoire")
+            String serviceSpecificationId) {
     }
 }

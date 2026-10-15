@@ -6,6 +6,7 @@ import com.candronex.dronemanagement.domain.DuplicateImsiException;
 import com.candronex.dronemanagement.domain.InvalidNetworkIdentityException;
 import com.candronex.ordermanagement.domain.DroneNotFoundException;
 import com.candronex.ordermanagement.domain.DuplicateOrderLineException;
+import com.candronex.ordermanagement.domain.UnknownServiceSpecificationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -45,7 +46,6 @@ class ProblemDetailsHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ProblemDetail onUnreadableBody(HttpMessageNotReadableException exception) {
-        // Couvre notamment un serviceType hors de l'offre publiée.
         return problem(HttpStatus.BAD_REQUEST, "malformed-request",
                 "Corps de requête illisible",
                 "Le corps JSON est mal formé ou contient une valeur hors du contrat.");
@@ -122,6 +122,12 @@ class ProblemDetailsHandler {
     ProblemDetail onDuplicateOrderLine(DuplicateOrderLineException exception) {
         return problem(HttpStatus.UNPROCESSABLE_ENTITY, "duplicate-order-line",
                 "Ligne de commande en double", exception.getMessage());
+    }
+
+    @ExceptionHandler(UnknownServiceSpecificationException.class)
+    ProblemDetail onUnknownServiceSpecification(UnknownServiceSpecificationException exception) {
+        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "unknown-service-specification",
+                "Service hors catalogue", exception.getMessage());
     }
 
     // ── 415 — format de corps non accepté ────────────────────────────

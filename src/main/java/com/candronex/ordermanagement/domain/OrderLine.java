@@ -1,34 +1,32 @@
 package com.candronex.ordermanagement.domain;
 
-import com.candronex.servicecatalog.published.ServiceType;
-
 import java.util.Objects;
 import java.util.UUID;
 
-/** Entité de l'agrégat Order : un service pour un drone, et l'état de son traitement. */
+/** Entité de l'agrégat Order : un service commandé pour un drone, et l'état de son traitement. */
 public final class OrderLine {
 
     private final UUID orderLineId;
     private final UUID droneId;
-    private final ServiceType serviceType;
+    private final OrderedService service;
     private OrderStatus status;
 
-    private OrderLine(UUID orderLineId, UUID droneId, ServiceType serviceType, OrderStatus status) {
+    private OrderLine(UUID orderLineId, UUID droneId, OrderedService service, OrderStatus status) {
         this.orderLineId = Objects.requireNonNull(orderLineId, "orderLineId");
         this.droneId = Objects.requireNonNull(droneId, "droneId");
-        this.serviceType = Objects.requireNonNull(serviceType, "serviceType");
+        this.service = Objects.requireNonNull(service, "service");
         this.status = Objects.requireNonNull(status, "status");
     }
 
     /** Visible de l'agrégat seul : une ligne ne se crée que par Order.addLine. */
-    static OrderLine receive(UUID droneId, ServiceType serviceType) {
-        return new OrderLine(UUID.randomUUID(), droneId, serviceType, OrderStatus.RECEIVED);
+    static OrderLine receive(UUID droneId, OrderedService service) {
+        return new OrderLine(UUID.randomUUID(), droneId, service, OrderStatus.RECEIVED);
     }
 
     /** Reconstitue une ligne enregistrée ; réservé à l'adaptateur de persistance. */
-    public static OrderLine restore(UUID orderLineId, UUID droneId, ServiceType serviceType,
+    public static OrderLine restore(UUID orderLineId, UUID droneId, OrderedService service,
                                     OrderStatus status) {
-        return new OrderLine(orderLineId, droneId, serviceType, status);
+        return new OrderLine(orderLineId, droneId, service, status);
     }
 
     /** Fait évoluer l'état de la ligne. */
@@ -40,9 +38,8 @@ public final class OrderLine {
         this.status = newStatus;
     }
 
-    /** Une ligne vise un couple drone + type de service, qui l'identifie métier. */
-    boolean targets(UUID candidateDroneId, ServiceType candidateServiceType) {
-        return droneId.equals(candidateDroneId) && serviceType == candidateServiceType;
+    public OrderLineKey key() {
+        return new OrderLineKey(droneId, service.serviceSpecificationId());
     }
 
     public UUID orderLineId() {
@@ -53,8 +50,8 @@ public final class OrderLine {
         return droneId;
     }
 
-    public ServiceType serviceType() {
-        return serviceType;
+    public OrderedService service() {
+        return service;
     }
 
     public OrderStatus status() {

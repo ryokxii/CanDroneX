@@ -319,7 +319,7 @@ class OAuth2FlowTest {
         @Test
         @DisplayName("la commande est passée au nom du sujet du jeton")
         void orderIsPlacedForTokenSubject() throws Exception {
-            OrderView view = new OrderView(UUID.randomUUID(), CLIENT_ID, "RECEIVED",
+            OrderView view = new OrderView(UUID.randomUUID(), "RECEIVED",
                     Instant.parse("2026-10-04T14:00:00Z"), null, List.of());
             when(orders.placeOrder(any())).thenReturn(new PlaceOrderResult(view, true));
 
@@ -328,7 +328,7 @@ class OAuth2FlowTest {
                             .header("Idempotency-Key", UUID.randomUUID().toString())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"orderLines":[{"droneId":"%s","serviceType":"IMAGERY_EMBB"}]}
+                                    {"orderLines":[{"droneId":"%s","serviceSpecificationId":"IMAGERY_EMBB"}]}
                                     """.formatted(DRONE_ID)))
                     .andExpect(status().isCreated());
 

@@ -41,7 +41,7 @@ class OrderController {
                 idempotencyKey,
                 request.orderLines().stream()
                         .map(line -> new PlaceOrderCommand.OrderLine(
-                                line.droneId(), line.serviceType()))
+                                line.droneId(), line.serviceSpecificationId()))
                         .toList());
 
         PlaceOrderResult result = orders.placeOrder(command);

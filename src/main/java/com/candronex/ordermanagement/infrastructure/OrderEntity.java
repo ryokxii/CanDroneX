@@ -2,6 +2,7 @@ package com.candronex.ordermanagement.infrastructure;
 
 import com.candronex.ordermanagement.domain.IdempotencyKey;
 import com.candronex.ordermanagement.domain.Order;
+import com.candronex.ordermanagement.domain.OrderLine;
 import com.candronex.ordermanagement.domain.OrderStatus;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -11,6 +12,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
@@ -46,6 +48,7 @@ class OrderEntity {
     /** Chargement immédiat assumé : on charge un agrégat entier ou pas du tout. */
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL,
                orphanRemoval = true, fetch = FetchType.EAGER)
+    @OrderBy("position")
     private List<OrderLineEntity> orderLines = new ArrayList<>();
 
     /** Requis par l'ORM. */
@@ -60,7 +63,11 @@ class OrderEntity {
         entity.status = order.status();
         entity.placedAt = order.placedAt();
         entity.completedAt = order.completedAt();
-        order.orderLines().forEach(line -> entity.orderLines.add(OrderLineEntity.from(line, entity)));
+
+        List<OrderLine> lines = order.orderLines();
+        for (int position = 0; position < lines.size(); position++) {
+            entity.orderLines.add(OrderLineEntity.from(lines.get(position), position, entity));
+        }
         return entity;
     }
 

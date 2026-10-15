@@ -1,7 +1,5 @@
 package com.candronex.ordermanagement.application;
 
-import com.candronex.servicecatalog.published.ServiceType;
-
 import java.util.List;
 import java.util.UUID;
 
@@ -11,7 +9,7 @@ public record PlaceOrderCommand(
         String idempotencyKey,
         List<OrderLine> orderLines) {
 
-    /** Une ligne demandée : un service pour un drone. */
-    public record OrderLine(UUID droneId, ServiceType serviceType) {
+    /** Une ligne demandée : un service du catalogue pour un drone. */
+    public record OrderLine(UUID droneId, String serviceSpecificationId) {
     }
 }
