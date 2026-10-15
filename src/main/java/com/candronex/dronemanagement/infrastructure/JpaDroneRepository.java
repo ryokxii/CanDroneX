@@ -1,6 +1,8 @@
 package com.candronex.dronemanagement.infrastructure;
 
 import com.candronex.dronemanagement.domain.Drone;
+import com.candronex.dronemanagement.domain.Iccid;
+import com.candronex.dronemanagement.domain.Imsi;
 import com.candronex.dronemanagement.domain.port.DroneRepository;
 import org.springframework.stereotype.Repository;
 
@@ -19,8 +21,13 @@ class JpaDroneRepository implements DroneRepository {
     }
 
     @Override
-    public boolean existsByImsi(String imsi) {
-        return drones.existsByImsi(imsi);
+    public boolean existsByImsi(Imsi imsi) {
+        return drones.existsByImsi(imsi.value());
+    }
+
+    @Override
+    public boolean existsByIccid(Iccid iccid) {
+        return drones.existsByIccid(iccid.value());
     }
 
     @Override

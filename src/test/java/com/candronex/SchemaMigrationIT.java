@@ -20,13 +20,13 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
     private JdbcTemplate jdbc;
 
     @Test
-    @DisplayName("les six migrations sont appliquées avec succès")
+    @DisplayName("les sept migrations sont appliquées avec succès")
     void appliesAllMigrations() {
         List<String> applied = jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true ORDER BY installed_rank",
                 String.class);
 
-        assertThat(applied).containsExactly("1", "2", "3", "4", "5", "6");
+        assertThat(applied).containsExactly("1", "2", "3", "4", "5", "6", "7");
     }
 
     @Test
@@ -61,6 +61,38 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
                 "drone.drones",
                 "orders.order_lines",
                 "orders.service_orders");
+    }
+
+    @Test
+    @DisplayName("aucune clé étrangère ne franchit la frontière d'un schéma")
+    void noForeignKeyCrossesASchema() {
+        Integer crossing = jdbc.queryForObject(
+                """
+                SELECT count(*)
+                FROM pg_constraint c
+                JOIN pg_class source ON source.oid = c.conrelid
+                JOIN pg_class target ON target.oid = c.confrelid
+                WHERE c.contype = 'f' AND source.relnamespace <> target.relnamespace
+                """,
+                Integer.class);
+
+        assertThat(crossing).isZero();
+    }
+
+    @Test
+    @DisplayName("l'IMSI et l'ICCID n'existent que dans le schéma drone")
+    void networkIdentifiersAreConfinedToTheDroneSchema() {
+        List<String> columns = jdbc.queryForList(
+                """
+                SELECT table_schema || '.' || table_name || '.' || column_name
+                FROM information_schema.columns
+                WHERE column_name IN ('imsi', 'iccid')
+                  AND table_schema NOT IN ('pg_catalog', 'information_schema')
+                ORDER BY 1
+                """,
+                String.class);
+
+        assertThat(columns).containsExactly("drone.drones.iccid", "drone.drones.imsi");
     }
 
     @Test

@@ -31,7 +31,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class OrderRepositoryIT extends PostgresIntegrationTest {
 
     private static final UUID CLIENT = DEMO_CLIENT;
-    private static final String IMSI = "302720123456789";
     private static final String KEY = "11111111-2222-3333-4444-555555555555";
 
     @Autowired
@@ -53,7 +52,8 @@ class OrderRepositoryIT extends PostgresIntegrationTest {
         jdbc.execute("TRUNCATE TABLE orders.service_orders CASCADE");
         jdbc.execute("TRUNCATE TABLE drone.drones");
         drone = registerDrone.register(
-                new RegisterDroneCommand(CLIENT, IMSI, SimType.ESIM)).droneId();
+                new RegisterDroneCommand(CLIENT, "999700000010231", "8999700000000010239",
+                        SimType.ESIM)).droneId();
     }
 
     private PlaceOrderCommand twoServices(String key) {

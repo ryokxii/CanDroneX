@@ -157,9 +157,8 @@ class OAuth2FlowTest {
         return "Bearer " + token;
     }
 
-    static DroneView droneOf(UUID clientId) {
-        return new DroneView(DRONE_ID, clientId, "302720123456789", "ESIM", "REGISTERED",
-                Instant.parse("2026-10-04T14:00:00Z"));
+    static DroneView drone() {
+        return new DroneView(DRONE_ID, "REGISTERED", Instant.parse("2026-10-04T14:00:00Z"));
     }
 
     @Nested
@@ -290,7 +289,7 @@ class OAuth2FlowTest {
         @Test
         @DisplayName("un jeton obtenu sur /oauth2/token donne accès aux drones du client du jeton")
         void tokenGrantsAccessAsTokenSubject() throws Exception {
-            when(drones.listForClient(CLIENT_ID)).thenReturn(List.of(droneOf(CLIENT_ID)));
+            when(drones.listForClient(CLIENT_ID)).thenReturn(List.of(drone()));
             String token = obtainToken();
 
             mvc.perform(get("/api/v1/drones").header(HttpHeaders.AUTHORIZATION, bearer(token)))
@@ -430,7 +429,7 @@ class OAuth2FlowTest {
                             .header(HttpHeaders.AUTHORIZATION, bearer(readOnly))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
-                                    {"imsi":"302720123456789","simType":"ESIM"}
+                                    {"imsi":"999700000010231","iccid":"8999700000000010239","simType":"ESIM"}
                                     """))
                     .andExpect(status().isForbidden())
                     .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, containsString("insufficient_scope")))

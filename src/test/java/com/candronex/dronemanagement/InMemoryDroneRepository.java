@@ -1,9 +1,10 @@
 package com.candronex.dronemanagement;
 
 import com.candronex.dronemanagement.domain.Drone;
+import com.candronex.dronemanagement.domain.Iccid;
+import com.candronex.dronemanagement.domain.Imsi;
 import com.candronex.dronemanagement.domain.port.DroneRepository;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,9 +17,15 @@ class InMemoryDroneRepository implements DroneRepository {
     private final Map<UUID, Drone> byId = new LinkedHashMap<>();
 
     @Override
-    public boolean existsByImsi(String imsi) {
+    public boolean existsByImsi(Imsi imsi) {
         return byId.values().stream()
                 .anyMatch(drone -> drone.networkIdentity().imsi().equals(imsi));
+    }
+
+    @Override
+    public boolean existsByIccid(Iccid iccid) {
+        return byId.values().stream()
+                .anyMatch(drone -> drone.networkIdentity().iccid().equals(iccid));
     }
 
     @Override
@@ -29,9 +36,7 @@ class InMemoryDroneRepository implements DroneRepository {
 
     @Override
     public List<Drone> findAllByClientId(UUID clientId) {
-        List<Drone> found = new ArrayList<>();
-        byId.values().stream().filter(drone -> drone.belongsTo(clientId)).forEach(found::add);
-        return found;
+        return byId.values().stream().filter(drone -> drone.belongsTo(clientId)).toList();
     }
 
     @Override

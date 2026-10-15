@@ -1,6 +1,7 @@
 package com.candronex.common;
 
 import com.candronex.customermanagement.published.UnknownClientException;
+import com.candronex.dronemanagement.domain.DuplicateIccidException;
 import com.candronex.dronemanagement.domain.DuplicateImsiException;
 import com.candronex.dronemanagement.domain.InvalidNetworkIdentityException;
 import com.candronex.ordermanagement.domain.DroneNotFoundException;
@@ -94,6 +95,12 @@ class ProblemDetailsHandler {
     ProblemDetail onDuplicateImsi(DuplicateImsiException exception) {
         return problem(HttpStatus.CONFLICT, "duplicate-imsi",
                 "IMSI déjà enregistré", exception.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateIccidException.class)
+    ProblemDetail onDuplicateIccid(DuplicateIccidException exception) {
+        return problem(HttpStatus.CONFLICT, "duplicate-iccid",
+                "ICCID déjà enregistré", exception.getMessage());
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

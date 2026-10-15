@@ -29,6 +29,9 @@ class DroneEntity {
     @Column(name = "imsi", nullable = false, length = 15)
     private String imsi;
 
+    @Column(name = "iccid", nullable = false, length = 20)
+    private String iccid;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "sim_type", nullable = false, length = 8)
     private SimType simType;
@@ -37,7 +40,7 @@ class DroneEntity {
     @Column(name = "status", nullable = false, length = 16)
     private DroneStatus status;
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "registered_at", nullable = false)
     private Instant registeredAt;
 
     /** Requis par l'ORM. */
@@ -48,7 +51,8 @@ class DroneEntity {
         DroneEntity entity = new DroneEntity();
         entity.droneId = drone.droneId();
         entity.clientId = drone.clientId();
-        entity.imsi = drone.networkIdentity().imsi();
+        entity.imsi = drone.networkIdentity().imsi().value();
+        entity.iccid = drone.networkIdentity().iccid().value();
         entity.simType = drone.networkIdentity().simType();
         entity.status = drone.status();
         entity.registeredAt = drone.registeredAt();
@@ -57,6 +61,6 @@ class DroneEntity {
 
     Drone toDomain() {
         return Drone.restore(droneId, clientId,
-                NetworkIdentity.of(imsi, simType), status, registeredAt);
+                NetworkIdentity.of(imsi, iccid, simType), status, registeredAt);
     }
 }

@@ -3,6 +3,7 @@ package com.candronex.dronemanagement.application;
 import com.candronex.customermanagement.published.ClientDirectory;
 import com.candronex.customermanagement.published.UnknownClientException;
 import com.candronex.dronemanagement.domain.Drone;
+import com.candronex.dronemanagement.domain.DuplicateIccidException;
 import com.candronex.dronemanagement.domain.DuplicateImsiException;
 import com.candronex.dronemanagement.domain.NetworkIdentity;
 import com.candronex.dronemanagement.domain.port.DroneRepository;
@@ -35,19 +36,19 @@ public class RegisterDroneService {
             throw new UnknownClientException(command.clientId());
         }
 
-        // Unicité globale de l'IMSI ; la contrainte UNIQUE en base départage les requêtes concurrentes.
-        if (drones.existsByImsi(command.imsi())) {
+        // Format d'abord : une identité mal formée est refusée sans interroger la base.
+        NetworkIdentity networkIdentity =
+                NetworkIdentity.of(command.imsi(), command.iccid(), command.simType());
+
+        // Unicité globale ; les contraintes UNIQUE en base départagent les requêtes concurrentes.
+        if (drones.existsByImsi(networkIdentity.imsi())) {
             throw new DuplicateImsiException();
         }
+        if (drones.existsByIccid(networkIdentity.iccid())) {
+            throw new DuplicateIccidException();
+        }
 
-        NetworkIdentity networkIdentity =
-                NetworkIdentity.of(command.imsi(), command.simType());
-
-        Drone drone = Drone.register(
-                command.clientId(),
-                networkIdentity,
-                clock.instant());
-
+        Drone drone = Drone.register(command.clientId(), networkIdentity, clock.instant());
         drones.save(drone);
         return DroneView.from(drone);
     }
@@ -60,7 +61,7 @@ public class RegisterDroneService {
                 .toList();
     }
 
-    /** Un drone du client identifié. */
+    /** Un drone du client identifié ; un drone d'un autre client est introuvable. */
     @Transactional(readOnly = true)
     public DroneView findForClient(UUID droneId, UUID clientId) {
         return drones.findByIdAndClientId(droneId, clientId)

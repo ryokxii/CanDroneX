@@ -11,6 +11,8 @@ interface DroneEntityStore extends JpaRepository<DroneEntity, UUID> {
 
     boolean existsByImsi(String imsi);
 
+    boolean existsByIccid(String iccid);
+
     Optional<DroneEntity> findByDroneIdAndClientId(UUID droneId, UUID clientId);
 
     List<DroneEntity> findAllByClientIdOrderByRegisteredAt(UUID clientId);

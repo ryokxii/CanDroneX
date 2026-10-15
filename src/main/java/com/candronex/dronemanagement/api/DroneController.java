@@ -22,7 +22,6 @@ import java.util.UUID;
 @RequestMapping("/api/v1/drones")
 class DroneController {
 
-
     private final RegisterDroneService drones;
 
     DroneController(RegisterDroneService drones) {
@@ -35,7 +34,7 @@ class DroneController {
             @Valid @RequestBody DroneRequest request) {
 
         DroneView registered = drones.register(new RegisterDroneCommand(
-                clientId, request.imsi(), request.simType()));
+                clientId, request.imsi(), request.iccid(), request.simType()));
 
         return ResponseEntity
                 .created(URI.create("/api/v1/drones/" + registered.droneId()))
