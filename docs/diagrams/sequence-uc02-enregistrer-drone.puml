@@ -1,0 +1,135 @@
+@startuml sequence-uc02-enregistrer-drone
+title UC-02 — Enregistrer un drone et son identité réseau
+
+hide footbox
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam sequenceMessageAlign center
+skinparam ParticipantPadding 12
+skinparam BoxPadding 10
+skinparam sequence {
+  ArrowColor #2F4A6D
+  LifeLineBorderColor #9AA9BC
+  ParticipantBorderColor #2F4A6D
+  ParticipantBackgroundColor #F4F7FB
+  GroupBorderColor #9AA9BC
+  GroupBackgroundColor #F4F7FB
+}
+
+actor "Client B2B" as client
+participant "Validation du jeton\n<<adaptateur entrant>>" as auth
+box "Module DroneManagement" #FBFCFE
+  participant "DroneController\n<<adaptateur entrant>>" as ctrl
+  participant "RegisterDroneService\n<<service applicatif>>" as app
+  participant "NetworkIdentity\n<<objet-valeur>>" as ni
+  participant "Drone\n<<agrégat>>" as drone
+  participant "DroneRepository\n<<port sortant>>" as repo
+end box
+participant "ClientDirectory\n<<interface publiée>>" as clientDir
+participant "Traduction des erreurs\nRFC 9457" as handler
+database "Schéma drone" as db
+
+client -> auth : POST /api/v1/drones\nAuthorization: Bearer <jeton> · DroneRequest
+activate auth
+
+break jeton absent, expiré, mal signé, ou d'un autre émetteur ou d'une autre audience
+  auth --> client : 401 Unauthorized : ProblemDetail
+end
+
+break jeton sans la portée drones:write
+  auth --> client : 403 Forbidden : ProblemDetail
+end
+
+auth -> ctrl : clientId = sujet du jeton
+deactivate auth
+activate ctrl
+
+break imsi, iccid ou simType absent
+  ctrl --> handler : requête invalide
+  handler --> client : 400 Bad Request : ProblemDetail
+end
+
+ctrl -> app : register(RegisterDroneCommand) : DroneView
+activate app
+
+group Transaction — un cas d'utilisation, une transaction
+  app -> clientDir : exists(clientId) : boolean
+  activate clientDir
+  clientDir --> app : boolean
+  deactivate clientDir
+
+  break client inconnu
+    app --> handler : UnknownClientException
+    handler --> client : 401 Unauthorized : ProblemDetail
+  end
+
+  app -> ni : of(imsi, iccid, simType) : NetworkIdentity
+  activate ni
+
+  break IMSI hors des 15 chiffres, ICCID hors E.118 ou chiffre de contrôle faux
+    ni --> handler : InvalidNetworkIdentityException
+    handler --> client : 422 Unprocessable Content : ProblemDetail
+  end
+
+  ni --> app : NetworkIdentity
+  deactivate ni
+
+  app -> repo : existsByImsi(Imsi) : boolean
+  activate repo
+  repo -> db : SELECT ... WHERE imsi = ?
+  repo --> app : boolean
+  deactivate repo
+
+  break IMSI déjà associé à un drone
+    app --> handler : DuplicateImsiException
+    handler --> client : 409 Conflict : ProblemDetail
+  end
+
+  app -> repo : existsByIccid(Iccid) : boolean
+  activate repo
+  repo -> db : SELECT ... WHERE iccid = ?
+  repo --> app : boolean
+  deactivate repo
+
+  break ICCID déjà associé à un drone
+    app --> handler : DuplicateIccidException
+    handler --> client : 409 Conflict : ProblemDetail
+  end
+
+  app -> drone : register(clientId, NetworkIdentity, registeredAt) : Drone
+  activate drone
+  drone --> app : Drone
+  deactivate drone
+
+  app -> repo : save(Drone)
+  activate repo
+  repo -> db : INSERT INTO drone.drones
+  deactivate repo
+end
+
+== Validation de la transaction ==
+
+break requête simultanée — violation de UNIQUE (imsi) ou UNIQUE (iccid)
+  db --> app : violation de contrainte d'unicité
+  app --> handler : conflit de persistance
+  handler --> client : 409 Conflict : ProblemDetail
+end
+
+app --> ctrl : DroneView
+deactivate app
+ctrl --> client : 201 Created · Location\nDroneResponse : droneId, status, registeredAt
+deactivate ctrl
+
+legend right
+  **break** : sortie exceptionnelle ; la transaction est annulée,
+  aucun drone n'est créé, et la réponse indiquée est retournée.
+
+  Le clientId n'est jamais lu dans la requête : il est le sujet du jeton.
+  L'IMSI et l'ICCID ne sortent pas du module : ni la réponse, ni les
+  erreurs, ni les journaux ne les contiennent.
+
+  Champ **absent** : 400, la requête est incomprise.
+  Champ **mal formé** : 422, comprise mais refusée par le domaine.
+  UC-02 n'est pas idempotent : un second enregistrement est refusé.
+endlegend
+@enduml
