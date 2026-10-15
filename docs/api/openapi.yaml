@@ -1,0 +1,464 @@
+openapi: 3.1.0
+info:
+  title: CanDroneX — API B2B
+  version: 1.0.0
+  description: |
+    API des exploitants de drones : enregistrement d'un drone (UC-02) et commande de services
+    de connectivité (UC-04).
+
+    **Identité du client.** Le client n'est jamais désigné dans le chemin, le corps ou un
+    en-tête applicatif : il est le sujet (`sub`) du jeton d'accès. Une ressource d'un autre
+    client répond exactement comme une ressource inexistante (404).
+
+    **Version.** La version majeure figure dans le chemin (`/api/v1`). Seul un changement
+    incompatible du contrat — champ retiré ou renommé, sémantique modifiée, nouveau champ
+    obligatoire — ouvre `/api/v2` ; `/api/v1` reste alors servie jusqu'à la fin de la période
+    de dépréciation annoncée. Un ajout compatible (champ facultatif, nouvelle route) reste en v1.
+
+    **Erreurs.** RFC 9457 (`application/problem+json`) sur toutes les routes `/api/v1`, avec
+    l'extension `correlationId`. Le point de terminaison de jeton suit le format d'erreur de
+    OAuth 2.0 (RFC 6749 §5.2), qu'attendent les bibliothèques clientes.
+
+servers:
+  - url: http://localhost:8080
+    description: Environnement local démarré par docker compose up
+
+security:
+  - oauth2: []
+
+tags:
+  - name: Jetons
+  - name: Drones
+    description: UC-02 — module DroneManagement
+  - name: Commandes
+    description: UC-04 — module OrderManagement
+
+paths:
+  /oauth2/token:
+    post:
+      tags: [Jetons]
+      summary: Obtenir un jeton d'accès (flux client_credentials)
+      description: |
+        Les identifiants du client s'envoient soit par l'en-tête `Authorization: Basic`, soit
+        dans le corps, jamais les deux et jamais dans l'URL. Sans `scope`, le jeton porte
+        toutes les portées de l'API.
+      security:
+        - clientSecretBasic: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type:
+                  type: string
+                  const: client_credentials
+                scope:
+                  type: string
+                  description: Portées séparées par des espaces.
+                  example: drones:read drones:write orders:write
+                client_id:
+                  type: string
+                  format: uuid
+                client_secret:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: "Jeton émis. Réponse non mise en cache (`Cache-Control: no-store`)."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Requête de jeton invalide (`invalid_request`, `unsupported_grant_type`, `invalid_scope`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenError'
+        '401':
+          description: Authentification du client échouée (`invalid_client`), sans distinguer la cause.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenError'
+
+  /api/v1/drones:
+    post:
+      tags: [Drones]
+      summary: Enregistrer un drone et son identité réseau
+      operationId: registerDrone
+      security:
+        - oauth2: [drones:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DroneRequest'
+      responses:
+        '201':
+          description: Drone enregistré.
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /api/v1/drones/9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Drone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: IMSI ou ICCID déjà associé à un drone, tous clients confondus.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Identité réseau refusée par le domaine (IMSI hors format, ICCID invalide).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    get:
+      tags: [Drones]
+      summary: Lister les drones du client
+      operationId: listDrones
+      security:
+        - oauth2: [drones:read]
+      responses:
+        '200':
+          description: Les drones du client du jeton, et eux seuls. Tableau vide s'il n'en a aucun.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Drone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/drones/{droneId}:
+    get:
+      tags: [Drones]
+      summary: Consulter un drone et son statut
+      operationId: getDrone
+      security:
+        - oauth2: [drones:read]
+      parameters:
+        - name: droneId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Le drone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Drone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/service-orders:
+    post:
+      tags: [Commandes]
+      summary: Commander les services de connectivité d'un ou plusieurs drones
+      operationId: placeServiceOrder
+      description: |
+        Chaque ligne désigne un drone du client et une spécification du catalogue. Les
+        caractéristiques de la spécification sont copiées dans la ligne à la soumission et n'y
+        changent plus, même si l'offre évolue.
+
+        **Idempotence.** Même client, même clé et même contenu : la commande existante est
+        retournée (200), rien n'est créé. Même clé avec un autre contenu : 409. L'ordre des
+        lignes n'entre pas dans la comparaison.
+
+        Le suivi d'une commande (UC-05) est hors périmètre : l'URL de l'en-tête `Location`
+        identifie la commande, mais n'est pas encore servie.
+      security:
+        - oauth2: [orders:write]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Choisie par le client, réutilisée à chaque rejeu de la même demande. Portée par client.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderRequest'
+      responses:
+        '201':
+          description: Commande créée.
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /api/v1/service-orders/4b77d903-1e58-4a6f-8c21-0d93fe4b7a16
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '200':
+          description: Rejeu d'une commande déjà créée avec la même clé et le même contenu.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Drone inexistant ou appartenant à un autre client — indiscernables.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Clé d'idempotence déjà utilisée pour un contenu différent.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Ligne en double (même drone et même service) ou service hors catalogue.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      description: "Jeton JWT signé RS256, à présenter dans `Authorization: Bearer <jeton>`."
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            drones:read: Lire les drones du client
+            drones:write: Enregistrer un drone
+            orders:write: Passer une commande de services
+    clientSecretBasic:
+      type: http
+      scheme: basic
+      description: client_id et client_secret, encodés selon RFC 6749 §2.3.1.
+
+  responses:
+    BadRequest:
+      description: Requête mal formée, refusée avant d'atteindre le domaine.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Jeton absent, expiré, mal signé, ou destiné à un autre émetteur ou une autre audience.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: Bearer error="invalid_token"
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Jeton valide, mais sans la portée requise par l'opération.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Ressource inexistante ou appartenant à un autre client — indiscernables.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    DroneRequest:
+      type: object
+      required: [imsi, iccid, simType]
+      properties:
+        imsi:
+          type: string
+          pattern: '^[0-9]{15}$'
+          description: Identité d'abonné (MCC + MNC + MSIN). Jamais renvoyée par l'API.
+          example: '999700000010231'
+        iccid:
+          type: string
+          pattern: '^89[0-9]{17,18}$'
+          description: Numéro du support (SIM ou eSIM), UIT-T E.118, chiffre de contrôle de Luhn. Jamais renvoyé par l'API.
+          example: '8999700000000010239'
+        simType:
+          type: string
+          enum: [SIM, ESIM]
+    Drone:
+      type: object
+      description: Le droneId est généré par la plateforme. L'identité réseau n'est jamais renvoyée.
+      required: [droneId, status, registeredAt]
+      properties:
+        droneId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [REGISTERED, RETIRED]
+        registeredAt:
+          type: string
+          format: date-time
+    OrderRequest:
+      type: object
+      required: [orderLines]
+      properties:
+        orderLines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [droneId, serviceSpecificationId]
+            properties:
+              droneId:
+                type: string
+                format: uuid
+              serviceSpecificationId:
+                type: string
+                description: Spécification du catalogue (TMF633).
+                example: C2_URLLC
+    Order:
+      type: object
+      description: Ni l'identifiant du client ni la clé d'idempotence n'y figurent.
+      required: [orderId, status, placedAt, orderLines]
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: Dérivé de l'état des lignes, jamais saisi.
+          enum: [RECEIVED, IN_PROGRESS, COMPLETED, PARTIAL, FAILED, CANCELLED]
+        placedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+          description: Nul tant qu'une ligne attend un résultat.
+        orderLines:
+          type: array
+          description: Dans l'ordre de la demande.
+          items:
+            $ref: '#/components/schemas/OrderLine'
+    OrderLine:
+      type: object
+      required: [orderLineId, droneId, serviceSpecificationId, serviceSpecificationVersion, serviceCharacteristics, status]
+      properties:
+        orderLineId:
+          type: string
+          format: uuid
+        droneId:
+          type: string
+          format: uuid
+        serviceSpecificationId:
+          type: string
+          example: C2_URLLC
+        serviceSpecificationVersion:
+          type: integer
+          minimum: 1
+          description: Version de l'offre au moment de la commande.
+        serviceCharacteristics:
+          type: array
+          description: Valeurs commandées, figées à la soumission.
+          items:
+            $ref: '#/components/schemas/ServiceCharacteristic'
+        status:
+          type: string
+          enum: [RECEIVED, IN_PROGRESS, COMPLETED, FAILED, CANCELLED]
+    ServiceCharacteristic:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+          example: sst
+        value:
+          type: string
+          example: '2'
+    Problem:
+      type: object
+      description: RFC 9457. Les membres normalisés, puis l'extension correlationId.
+      required: [type, title, status, detail, instance, correlationId]
+      properties:
+        type:
+          type: string
+          format: uri
+          example: https://candronex.ca/problems/invalid-network-identity
+        title:
+          type: string
+          example: Identité réseau invalide
+        status:
+          type: integer
+          example: 422
+        detail:
+          type: string
+          example: L'IMSI doit comporter exactement 15 chiffres.
+        instance:
+          type: string
+          format: uri-reference
+          example: /api/v1/drones
+        correlationId:
+          type: string
+          format: uuid
+          description: Inscrit dans les journaux du serveur avec la cause technique ; à citer au soutien technique.
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, scope]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          const: Bearer
+        expires_in:
+          type: integer
+          example: 900
+        scope:
+          type: string
+          example: drones:read drones:write orders:write
+    TokenError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [invalid_request, invalid_client, unsupported_grant_type, invalid_scope]
+        error_description:
+          type: string
