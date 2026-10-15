@@ -1,0 +1,326 @@
+@startuml modele-domaine
+title Modèle de domaine — conception tactique (CanDroneX)
+
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam packageStyle rectangle
+skinparam nodesep 35
+skinparam ranksep 50
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #2F4A6D
+}
+skinparam arrow {
+  FontSize 10
+}
+hide empty members
+hide stereotype
+
+package "Customer Management" {
+  class Client <<(A,#2F4A6D)>> {
+    clientId : UUID
+    companyName
+    --
+    onboard(companyName)
+  }
+  class ApiCredential <<(A,#2F4A6D)>> {
+    clientId : UUID
+    secretHash
+    issuedAt
+    expiresAt
+    revokedAt
+    --
+    isUsableAt(instant)
+    revokedAt(instant)
+  }
+  class TokenIssuanceService <<(S,#D79B00)>> {
+    issue(ClientCredentialsGrant) : AccessToken
+  }
+  ApiCredential ..> Client : clientId — un par client,\nclient_id OAuth 2.0 et\nsujet du jeton
+  TokenIssuanceService ..> ApiCredential
+}
+
+package "Drone Management" {
+  class Drone <<(A,#2F4A6D)>> {
+    droneId : UUID
+    clientId : UUID
+    status : DroneStatus
+    registeredAt
+    --
+    register(clientId, networkIdentity, instant)
+    belongsTo(clientId)
+  }
+  class NetworkIdentity <<(V,#82B366)>> {
+    simType : SIM | ESIM
+  }
+  class Imsi <<(V,#82B366)>> {
+    value : 15 chiffres
+    --
+    masqué hors du module
+  }
+  class Iccid <<(V,#82B366)>> {
+    value : 89 + 17 ou 18 chiffres, Luhn
+    --
+    masqué hors du module
+  }
+  class RegisterDroneService <<(S,#D79B00)>> {
+    register(RegisterDroneCommand) — UC-02
+  }
+  class "DroneRegistered" as DroneRegistered <<(!,#B85450)>> #line.dashed {
+    droneId
+    clientId
+    occurredAt
+    correlationId
+  }
+  Drone *-- NetworkIdentity
+  NetworkIdentity *-- Imsi
+  NetworkIdentity *-- Iccid
+  RegisterDroneService ..> Drone
+  Drone ..> DroneRegistered : émet — prévu
+}
+
+package "Service Catalog" {
+  class ServiceSpecification <<(A,#2F4A6D)>> {
+    id : ServiceSpecificationId
+    name
+    version
+  }
+  class CharacteristicSpecification <<(V,#82B366)>> {
+    name
+    valueType : INTEGER | STRING
+    defaultValue
+    --
+    valeurs possibles
+  }
+  ServiceSpecification *-- "1..*" CharacteristicSpecification
+}
+
+package "Order Management" {
+  class Order <<(A,#2F4A6D)>> {
+    orderId : UUID
+    clientId : UUID
+    idempotencyKey : IdempotencyKey
+    status : OrderStatus
+    placedAt
+    completedAt
+    --
+    addLine(droneId, orderedService)
+    updateLineStatus(orderLineId, status, instant)
+    verifyReplayOf(lignes demandées)
+  }
+  class OrderLine <<(E,#6C8EBF)>> {
+    orderLineId : UUID
+    droneId : UUID
+    status : OrderLineStatus
+  }
+  class OrderedService <<(V,#82B366)>> {
+    serviceSpecificationId
+    serviceSpecificationVersion
+    --
+    service commandé, figé
+  }
+  class ServiceCharacteristic <<(V,#82B366)>> {
+    name
+    value
+    --
+    valeur commandée
+  }
+  enum OrderStatus {
+    RECEIVED
+    IN_PROGRESS
+    COMPLETED
+    PARTIAL
+    FAILED
+    CANCELLED
+  }
+  enum OrderLineStatus {
+    RECEIVED
+    IN_PROGRESS
+    COMPLETED
+    FAILED
+    CANCELLED
+  }
+  class OrderStatusPolicy <<(D,#9673A6)>> {
+    derive(états des lignes) : OrderStatus
+  }
+  class PlaceOrderService <<(S,#D79B00)>> {
+    placeOrder(PlaceOrderCommand) — UC-04
+  }
+  class RequestActivationService <<(S,#D79B00)>> #line.dashed {
+    demande l'activation de chaque ligne,
+    ligne RECEIVED → IN_PROGRESS
+  }
+  class ActivationResultHandler <<(S,#D79B00)>> #line.dashed {
+    reçoit le résultat d'activation,
+    appelle Order.updateLineStatus
+  }
+  class "OrderCreated" as OrderCreated <<(!,#B85450)>> #line.dashed {
+    orderId
+    clientId
+    orderLines : orderLineId, droneId,
+      serviceSpecificationId, version,
+      caractéristiques
+    occurredAt
+    correlationId
+  }
+  Order *-- "1..*" OrderLine : au plus une par\n(droneId, spécification)
+  OrderLine *-- OrderedService
+  OrderedService *-- "1..*" ServiceCharacteristic
+  Order ..> OrderStatusPolicy : état dérivé\ndes lignes
+  Order ..> OrderStatus
+  OrderLine ..> OrderLineStatus
+  PlaceOrderService ..> Order
+  Order ..> OrderCreated : émet — prévu
+  ActivationResultHandler ..> Order : COMPLETED, FAILED,\nou IN_PROGRESS à la reprise
+}
+
+package "Service Activation (TMF640) — prévu" as activation #line.dashed;line:7A8899 {
+  class "Service" as ActivationService <<(A,#2F4A6D)>> #line.dashed {
+    serviceId
+    orderLineId : unique
+    droneId
+    serviceSpecificationId
+    characteristics : copie figée
+    state : ActivationState
+  }
+  class ActivationAttempt <<(E,#6C8EBF)>> #line.dashed {
+    attemptNumber
+    startedAt
+    outcome : SUCCEEDED | FAILED | INDETERMINATE
+    cause
+  }
+  class Snssai <<(V,#82B366)>> #line.dashed {
+    sst
+    sd
+    --
+    référence la tranche,
+    configurée par l'opérateur
+  }
+  enum ActivationState #line.dashed {
+    REQUESTED
+    IN_PROGRESS
+    UNCONFIRMED
+    ACTIVE
+    FAILED
+  }
+  class ActivateServiceService <<(S,#D79B00)>> #line.dashed {
+    request(orderLineId, droneId, service) — UC-06
+  }
+  class ResumeActivationService <<(S,#D79B00)>> #line.dashed {
+    resume(serviceId) — UC-10
+  }
+  class ActivationOutcomePolicy <<(D,#9673A6)>> #line.dashed {
+    issue → état, reprise permise ?
+  }
+  interface ProvisioningPort <<(P,#D79B00)>> #line.dashed {
+    provision(identité réseau, tranche, dnn, qos)
+    readState(identité réseau, tranche, dnn)
+  }
+  class "ServiceActivated" as ServiceActivated <<(!,#B85450)>> #line.dashed {
+    serviceId
+    orderLineId
+    occurredAt
+    correlationId
+  }
+  class "ServiceActivationFailed" as ServiceActivationFailed <<(!,#B85450)>> #line.dashed {
+    serviceId
+    orderLineId
+    cause
+    occurredAt
+    correlationId
+  }
+  class "ServiceActivationResumed" as ServiceActivationResumed <<(!,#B85450)>> #line.dashed {
+    serviceId
+    orderLineId
+    occurredAt
+    correlationId
+  }
+  ActivationService *-- "1..*" ActivationAttempt
+  ActivationService *-- Snssai
+  ActivationService ..> ActivationState
+  ActivateServiceService ..> ActivationService
+  ResumeActivationService ..> ActivationService
+  ActivateServiceService ..> ActivationOutcomePolicy
+  ActivateServiceService ..> ProvisioningPort
+  ActivationService ..> ServiceActivated : émet
+  ActivationService ..> ServiceActivationFailed : émet
+  ActivationService ..> ServiceActivationResumed : émet
+}
+
+package "Service Inventory (TMF638) — prévu" as inventory #line.dashed;line:7A8899 {
+  class "Service" as InventoryService <<(A,#2F4A6D)>> #line.dashed {
+    serviceId
+    droneId
+    clientId
+    serviceSpecificationId
+    characteristics
+    state : DESIGNED | ACTIVE | FAILED | TERMINATED
+    activatedAt
+    terminatedAt
+  }
+  class ServiceOrderRef <<(V,#82B366)>> #line.dashed {
+    orderId
+    orderLineId
+    action : add | modify | delete
+    at
+  }
+  class RecordServiceStateService <<(S,#D79B00)>> #line.dashed {
+    record(serviceId, état) — appelé par Activation
+  }
+  class ReconcileInventoryService <<(S,#D79B00)>> #line.dashed {
+    UC-13
+  }
+  class DriftDetectionPolicy <<(D,#9673A6)>> #line.dashed {
+    commandé, provisionné, établi
+  }
+  InventoryService *-- "1..*" ServiceOrderRef : historique des\ncommandes du service
+  RecordServiceStateService ..> InventoryService
+  ReconcileInventoryService ..> DriftDetectionPolicy
+}
+
+package "Audit Trail — prévu" as audit #line.dashed;line:7A8899 {
+  class AuditEntry <<(A,#2F4A6D)>> #line.dashed {
+    auditEntryId
+    actorRef
+    action
+    resourceRef
+    outcome
+    occurredAt
+    correlationId
+    --
+    ajout seul
+  }
+}
+
+
+' ── Références entre contextes : par identifiant seulement ──
+Drone ..> Client : clientId
+Order ..> Client : clientId
+OrderLine ..> Drone : droneId
+OrderedService ..> ServiceSpecification : copie id, version\net valeurs à la soumission
+
+' ── Activation, prévue ──
+RequestActivationService -[#2F4A6D,dashed]-> ActivateServiceService : demande l'activation
+ActivateServiceService -[#2F4A6D,dashed]-> Drone : identité réseau,\nrésolue à chaque tentative
+ActivateServiceService -[#2F4A6D,dashed]-> RecordServiceStateService : état courant
+ServiceActivated .[#B85450].> ActivationResultHandler : reçu par
+ServiceActivationFailed .[#B85450].> ActivationResultHandler : reçu par
+ServiceActivationResumed .[#B85450].> ActivationResultHandler : reçu par
+ActivationService ..> AuditEntry : chaque tentative\nlaisse une entrée
+
+legend bottom
+  **Pointillé** : prévu, non implémenté — Service Activation, Service Inventory, Audit Trail.
+  (A) agrégat   (E) entité   (V) objet-valeur   (S) service applicatif   (D) service de domaine
+  (P) port   (!) événement de domaine ; (E) orange : énumération
+  Composition pleine : au sein d'un agrégat.  Pointillé simple : référence par identifiant
+  vers un autre agrégat ou un autre contexte, jamais par objet.
+  La spécification décrit les **valeurs possibles** ; la ligne fige les **valeurs commandées**.
+  OrderCreated ne transporte ni l'IMSI ni l'ICCID : l'identité réseau est résolue par
+  Service Activation à chaque tentative, auprès de Drone Management.
+  Un événement ne modifie jamais directement un autre agrégat : un gestionnaire du contexte
+  destinataire le reçoit, appelle le cas d'utilisation, et l'agrégat applique la transition.
+  La tranche réseau n'est pas un agrégat : elle préexiste, et le Service la référence par son
+  S-NSSAI. Une seule activation par ligne de commande. Un délai dépassé donne UNCONFIRMED,
+  jamais FAILED : l'état réel est relu avant toute reprise (UC-10).
+endlegend
+@enduml
