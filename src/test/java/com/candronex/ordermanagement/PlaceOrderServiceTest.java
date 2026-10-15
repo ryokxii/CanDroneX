@@ -11,6 +11,7 @@ import com.candronex.ordermanagement.application.PlaceOrderResult;
 import com.candronex.ordermanagement.application.PlaceOrderService;
 import com.candronex.ordermanagement.domain.DroneNotFoundException;
 import com.candronex.ordermanagement.domain.DuplicateOrderLineException;
+import com.candronex.ordermanagement.domain.IdempotencyKeyConflictException;
 import com.candronex.ordermanagement.domain.UnknownServiceSpecificationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -192,6 +193,17 @@ class PlaceOrderServiceTest {
         }
 
         @Test
+        @DisplayName("rejeu séquentiel, contenu différent : conflit, rien n'est créé")
+        void sequentialReplayWithOtherContentIsAConflict() {
+            service.placeOrder(orderFor(CLIENT, KEY, line(DRONE, C2)));
+
+            assertThatThrownBy(() -> service.placeOrder(orderFor(CLIENT, KEY, line(DRONE, IMAGERY))))
+                    .isInstanceOf(IdempotencyKeyConflictException.class);
+
+            assertThat(orders.count()).isEqualTo(1);
+        }
+
+        @Test
         @DisplayName("la portée de la clé est le client : la même clé d'un autre client est indépendante")
         void keyIsScopedByClient() {
             service.placeOrder(orderFor(CLIENT, KEY, line(DRONE, C2)));
@@ -214,6 +226,19 @@ class PlaceOrderServiceTest {
 
             assertThat(concurrent.created()).isFalse();
             assertThat(concurrent.order().orderId()).isEqualTo(first.order().orderId());
+            assertThat(orders.count()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("rejeu simultané, contenu différent : conflit après relecture")
+        void concurrentReplayWithOtherContentIsAConflict() {
+            service.placeOrder(orderFor(CLIENT, KEY, line(DRONE, C2)));
+
+            orders.failNextSaveAsConcurrentReplay();
+            orders.hideNextLookup();
+
+            assertThatThrownBy(() -> service.placeOrder(orderFor(CLIENT, KEY, line(DRONE, IMAGERY))))
+                    .isInstanceOf(IdempotencyKeyConflictException.class);
             assertThat(orders.count()).isEqualTo(1);
         }
     }

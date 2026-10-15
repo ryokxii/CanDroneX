@@ -2,7 +2,9 @@ package com.candronex.ordermanagement.domain;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -89,8 +91,25 @@ public final class Order {
         this.completedAt = status.isPending() ? null : now;
     }
 
+    /**
+     * Idempotence : la même clé ne désigne la même demande que si le contenu est le même.
+     *
+     * @throws IdempotencyKeyConflictException si la clé a servi pour d'autres lignes
+     */
+    public void verifyReplayOf(Collection<OrderLineKey> requestedLines) {
+        boolean sameLines = requestedLines.size() == orderLines.size()
+                && new HashSet<>(requestedLines).equals(new HashSet<>(lineKeys()));
+        if (!sameLines) {
+            throw new IdempotencyKeyConflictException();
+        }
+    }
+
     private List<OrderLineStatus> lineStatuses() {
         return orderLines.stream().map(OrderLine::status).toList();
+    }
+
+    private List<OrderLineKey> lineKeys() {
+        return orderLines.stream().map(OrderLine::key).toList();
     }
 
     public boolean belongsTo(UUID candidateClientId) {

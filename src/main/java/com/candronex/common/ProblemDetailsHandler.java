@@ -6,6 +6,7 @@ import com.candronex.dronemanagement.domain.DuplicateImsiException;
 import com.candronex.dronemanagement.domain.InvalidNetworkIdentityException;
 import com.candronex.ordermanagement.domain.DroneNotFoundException;
 import com.candronex.ordermanagement.domain.DuplicateOrderLineException;
+import com.candronex.ordermanagement.domain.IdempotencyKeyConflictException;
 import com.candronex.ordermanagement.domain.UnknownServiceSpecificationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,6 +102,12 @@ class ProblemDetailsHandler {
     ProblemDetail onDuplicateIccid(DuplicateIccidException exception) {
         return problem(HttpStatus.CONFLICT, "duplicate-iccid",
                 "ICCID déjà enregistré", exception.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyKeyConflictException.class)
+    ProblemDetail onIdempotencyKeyConflict(IdempotencyKeyConflictException exception) {
+        return problem(HttpStatus.CONFLICT, "idempotency-key-reused",
+                "Clé d'idempotence déjà utilisée", exception.getMessage());
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

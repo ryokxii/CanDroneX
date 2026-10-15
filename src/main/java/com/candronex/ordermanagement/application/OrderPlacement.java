@@ -43,12 +43,13 @@ public class OrderPlacement {
         this.clock = clock;
     }
 
-    /** Crée la commande, ou retourne celle qui porte déjà cette clé. */
+    /** Crée la commande, ou retourne celle qui porte déjà cette clé pour le même contenu. */
     @Transactional
     public PlaceOrderResult place(PlaceOrderCommand command, IdempotencyKey key) {
         Optional<Order> alreadyPlaced =
                 orders.findByClientIdAndIdempotencyKey(command.clientId(), key);
         if (alreadyPlaced.isPresent()) {
+            alreadyPlaced.get().verifyReplayOf(command.lineKeys());
             return PlaceOrderResult.replayed(OrderView.from(alreadyPlaced.get()));
         }
 

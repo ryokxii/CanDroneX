@@ -8,6 +8,7 @@ import com.candronex.ordermanagement.application.PlaceOrderCommand;
 import com.candronex.ordermanagement.application.PlaceOrderResult;
 import com.candronex.ordermanagement.application.PlaceOrderService;
 import com.candronex.ordermanagement.domain.IdempotencyKey;
+import com.candronex.ordermanagement.domain.IdempotencyKeyConflictException;
 import com.candronex.ordermanagement.domain.Order;
 import com.candronex.ordermanagement.domain.OrderLine;
 import com.candronex.ordermanagement.domain.OrderLineStatus;
@@ -137,6 +138,16 @@ class OrderRepositoryIT extends PostgresIntegrationTest {
         assertThat(replay.order().orderId()).isEqualTo(first.order().orderId());
         assertThat(jdbc.queryForObject(
                 "SELECT count(*) FROM orders.order_lines", Integer.class)).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("rejouer la même clé avec un autre contenu est refusé")
+    void replayWithOtherContentIsRejected() {
+        placeOrder.placeOrder(twoServices(KEY));
+
+        assertThatThrownBy(() -> placeOrder.placeOrder(new PlaceOrderCommand(CLIENT, KEY,
+                List.of(new PlaceOrderCommand.OrderLine(drone, C2)))))
+                .isInstanceOf(IdempotencyKeyConflictException.class);
     }
 
     @Test

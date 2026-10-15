@@ -2,8 +2,10 @@ package com.candronex.ordermanagement;
 
 import com.candronex.ordermanagement.domain.DuplicateOrderLineException;
 import com.candronex.ordermanagement.domain.IdempotencyKey;
+import com.candronex.ordermanagement.domain.IdempotencyKeyConflictException;
 import com.candronex.ordermanagement.domain.Order;
 import com.candronex.ordermanagement.domain.OrderLine;
+import com.candronex.ordermanagement.domain.OrderLineKey;
 import com.candronex.ordermanagement.domain.OrderLineStatus;
 import com.candronex.ordermanagement.domain.OrderStatus;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +13,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static com.candronex.ordermanagement.CatalogFixtures.C2;
@@ -20,7 +23,7 @@ import static com.candronex.ordermanagement.CatalogFixtures.imagery;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Règles de l'agrégat Order : invariant des lignes et cycle de vie. */
+/** Règles de l'agrégat Order : invariant des lignes, cycle de vie, idempotence. */
 class OrderTest {
 
     private static final UUID CLIENT = UUID.randomUUID();
@@ -169,6 +172,50 @@ class OrderTest {
 
             assertThatThrownBy(() -> order.updateLineStatus(imagery, OrderLineStatus.CANCELLED, LATER))
                     .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("idempotence")
+    class Idempotence {
+
+        private Order placedWithTwoLines() {
+            Order order = anOrder();
+            order.addLine(DRONE, c2());
+            order.addLine(DRONE, imagery());
+            return order;
+        }
+
+        @Test
+        @DisplayName("même contenu, dans n'importe quel ordre : c'est un rejeu")
+        void sameContentIsAReplay() {
+            Order order = placedWithTwoLines();
+
+            order.verifyReplayOf(List.of(
+                    new OrderLineKey(DRONE, IMAGERY), new OrderLineKey(DRONE, C2)));
+        }
+
+        @Test
+        @DisplayName("contenu différent sous la même clé : conflit")
+        void differentContentIsAConflict() {
+            Order order = placedWithTwoLines();
+
+            assertThatThrownBy(() -> order.verifyReplayOf(List.of(new OrderLineKey(DRONE, C2))))
+                    .isInstanceOf(IdempotencyKeyConflictException.class);
+            assertThatThrownBy(() -> order.verifyReplayOf(List.of(
+                    new OrderLineKey(DRONE, C2), new OrderLineKey(UUID.randomUUID(), IMAGERY))))
+                    .isInstanceOf(IdempotencyKeyConflictException.class);
+        }
+
+        @Test
+        @DisplayName("une ligne dupliquée dans le rejeu n'est pas le même contenu")
+        void duplicatedReplayLineIsAConflict() {
+            Order order = anOrder();
+            order.addLine(DRONE, c2());
+
+            assertThatThrownBy(() -> order.verifyReplayOf(List.of(
+                    new OrderLineKey(DRONE, C2), new OrderLineKey(DRONE, C2))))
+                    .isInstanceOf(IdempotencyKeyConflictException.class);
         }
     }
 }
