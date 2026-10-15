@@ -1,0 +1,76 @@
+@startuml deploiement
+title Topologie de déploiement — Docker Compose (CanDroneX)
+
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam ArrowFontSize 10
+skinparam nodesep 40
+skinparam ranksep 50
+skinparam node {
+  BackgroundColor #FFFFFF
+  BorderColor #2F4A6D
+}
+skinparam artifact {
+  BackgroundColor #FBFCFE
+  BorderColor #9AA9BC
+}
+skinparam component {
+  BackgroundColor #FBFCFE
+  BorderColor #9AA9BC
+}
+skinparam database {
+  BackgroundColor #FFFFFF
+  BorderColor #2F4A6D
+}
+skinparam storage {
+  BackgroundColor #FBFCFE
+  BorderColor #9AA9BC
+}
+skinparam arrow {
+  Color #2F4A6D
+}
+
+node "Poste local" <<device>> as host {
+
+  component "Client HTTP\ncurl, Postman, scripts/demo.sh" <<logiciel>> as client
+  artifact "docker-compose.yml" as compose
+  artifact ".env\nsecrets locaux, jamais versionné ni livré\n(gabarit : .env.example)" as env
+
+  node "Docker Engine" <<execution environment>> as engine {
+
+    node "candronex-net" <<network — bridge>> as net {
+
+      node "app — candronex-app" <<container>> as appNode {
+        artifact "candronex.jar\nSpring Boot — port 8080/tcp\nmigrations Flyway V1 à V10" as jar
+      }
+
+      node "db — candronex-db" <<container>> as dbNode {
+        component "postgres:16" <<image Docker>> as pg
+        database "candronex\nschémas : customer, drone,\ncatalog, orders" as db
+        database "schéma audit\n— prévu" as audit #line.dashed
+      }
+    }
+
+    storage "candronex-data" <<volume>> as vol
+  }
+}
+
+client --> appNode : **8080:8080** — HTTP / JSON
+appNode --> dbNode : JDBC 5432/tcp
+dbNode --> vol : monté sur\n/var/lib/postgresql/data
+appNode ..> dbNode : depends_on :\nservice_healthy
+compose ..> engine : docker compose up --build
+env ..> compose : variables injectées
+
+legend right
+  Un seul artefact applicatif, un seul processus, une seule base.
+  **8080** est le seul port publié sur l'hôte ; **5432** reste interne au réseau candronex-net.
+  Les deux conteneurs portent une sonde de santé : pg_isready pour db,
+  /actuator/health pour app, qui attend que db soit prête avant que Flyway ne migre.
+  Le volume **candronex-data** conserve les données ; docker compose down -v les supprime.
+  Variables : POSTGRES_USER, POSTGRES_PASSWORD, CANDRONEX_OAUTH2_ISSUER,
+  CANDRONEX_OAUTH2_ACCESS_TOKEN_TTL. Le secret du client de démonstration n'est pas
+  un secret réel : il est publié dans la migration V5 et le README.
+  **Pointillé** : prévu — la piste d'audit aura son propre schéma dans la même base.
+endlegend
+@enduml
