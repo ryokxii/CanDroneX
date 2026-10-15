@@ -1,0 +1,77 @@
+@startuml decomposition-modules
+title Décomposition du monolithe en modules — CanDroneX
+
+skinparam shadowing false
+skinparam defaultFontName Helvetica
+skinparam componentStyle rectangle
+skinparam component {
+  BackgroundColor #F4F7FB
+  BorderColor #2F4A6D
+}
+skinparam node {
+  BackgroundColor #FFFFFF
+  BorderColor #2F4A6D
+}
+skinparam frame {
+  BackgroundColor #FFFFFF
+  BorderColor #9AA9BC
+}
+skinparam arrow {
+  Color #2F4A6D
+  FontSize 10
+}
+
+actor "Système du\nclient B2B" as client
+node "Réseau 5G\n(Open5GS)" as reseau #line.dashed
+
+node "Monolithe CanDroneX — un artefact, un processus" as mono {
+
+  component "**API REST**\n//adaptateur entrant — implémenté//\nExpose /api/v1, valide le jeton et les requêtes,\ntraduit les erreurs du domaine en codes HTTP" as rest
+
+  frame "Modules métier — un module par contexte délimité" as metier {
+    component "**CustomerManagement** — implémenté\nClient B2B et identifiant d'accès ;\némission des jetons OAuth 2.0\n(UC-01 partiel, UC-11)" as customer
+    component "**DroneManagement** — implémenté\nDrone et identité réseau (IMSI, ICCID) ;\nunicité droneId ↔ IMSI\n(UC-02)" as drone
+    component "**ServiceCatalog** — implémenté\nSpécifications de service et leurs\ncaractéristiques, en données\n(UC-03 prévu)" as catalog
+    component "**OrderManagement** — implémenté\nCommande et lignes, service commandé figé,\nidempotence de la prise de commande\n(UC-04 ; UC-05, UC-15 prévus)" as order
+    component "**ServiceActivation** — prévu\nActivation des services sur le réseau 5G,\nissue indéterminée, reprise sans doublon\n(UC-06, UC-09, UC-10)" as activation #line.dashed
+    component "**ServiceInventory** — prévu\nÉtat courant des services par drone ;\nréconciliation avec le réseau\n(UC-07, UC-13)" as inventory #line.dashed
+  }
+
+  component "**AuditTrail** — prévu\nTrace en ajout seul des opérations\nimportantes et restitution\n(UC-08, UC-12)" as audit #line.dashed
+}
+
+client --> rest : HTTPS / JSON\njeton Bearer
+
+' ── Appels synchrones implémentés, vers l'interface publiée du module sollicité ──
+rest --> drone : UC-02
+rest --> order : UC-04
+rest --> customer : jeton (UC-11)
+
+drone --> customer : ClientDirectory :\nclient connu ?
+order --> customer : ClientDirectory :\nclient connu ?
+order --> drone : DroneDirectory : drone existant\net appartenant au client ?
+order --> catalog : ServiceCatalog : spécification\net caractéristiques à figer
+
+' ── Échanges prévus ──
+order -[#2F4A6D,dashed]-> activation : demander l'activation\ndes lignes acceptées
+activation -[#2F4A6D,dashed]-> drone : identité réseau,\nà chaque tentative
+activation -[#2F4A6D,dashed]-> inventory : état courant du service
+activation .[#B85450].> order : résultat d'activation\n(événement)
+activation -[#2F4A6D,dashed]-> reseau : adaptateur sortant :\napprovisionner, relire
+inventory -[#2F4A6D,dashed]-> reseau : adaptateur sortant :\nlire l'état réel
+rest -[#2F4A6D,dashed]-> inventory : UC-07
+
+' ── Piste d'audit : écriture seule, depuis tous les modules métier ──
+metier .[#7A8899].> audit : consigne toute opération importante\n(interface AuditWriter)
+
+legend right
+  **Trait plein** : implémenté.  **Pointillé** : prévu — modélisé, non implémenté.
+  **Bleu** : appel synchrone vers l'interface publiée d'un autre module.
+  **Rouge** : événement de domaine publié dans le processus.
+  **Gris** : écriture dans la piste d'audit.
+
+  Les appels synchrones forment un graphe acyclique ; le seul retour,
+  d'Activation vers Commandes, passe par un événement.
+  Inventaire n'active aucun service : il reçoit l'état courant d'Activation.
+endlegend
+@enduml
