@@ -1,13 +1,13 @@
 package com.candronex.common.security;
 
-import com.candronex.accessmanagement.InMemoryApiCredentialRepository;
-import com.candronex.accessmanagement.application.TokenIssuanceService;
-import com.candronex.accessmanagement.domain.ApiCredential;
-import com.candronex.accessmanagement.domain.port.ApiCredentialRepository;
+import com.candronex.customermanagement.InMemoryApiCredentialRepository;
+import com.candronex.customermanagement.application.TokenIssuanceService;
+import com.candronex.customermanagement.domain.ApiCredential;
+import com.candronex.customermanagement.domain.port.ApiCredentialRepository;
 import com.candronex.common.TimeConfiguration;
-import com.candronex.droneregistration.application.DroneView;
-import com.candronex.droneregistration.application.RegisterDroneCommand;
-import com.candronex.droneregistration.application.RegisterDroneService;
+import com.candronex.dronemanagement.application.DroneView;
+import com.candronex.dronemanagement.application.RegisterDroneCommand;
+import com.candronex.dronemanagement.application.RegisterDroneService;
 import com.candronex.ordermanagement.application.OrderView;
 import com.candronex.ordermanagement.application.PlaceOrderCommand;
 import com.candronex.ordermanagement.application.PlaceOrderResult;

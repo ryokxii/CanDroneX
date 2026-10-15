@@ -1,8 +1,8 @@
 package com.candronex.ordermanagement.application;
 
-import com.candronex.accessmanagement.published.ClientDirectory;
-import com.candronex.accessmanagement.published.UnknownClientException;
-import com.candronex.droneregistration.published.DroneDirectory;
+import com.candronex.customermanagement.published.ClientDirectory;
+import com.candronex.customermanagement.published.UnknownClientException;
+import com.candronex.dronemanagement.published.DroneDirectory;
 import com.candronex.ordermanagement.domain.DroneNotFoundException;
 import com.candronex.ordermanagement.domain.IdempotencyKey;
 import com.candronex.ordermanagement.domain.Order;
@@ -54,7 +54,7 @@ public class OrderPlacement {
         Order order = Order.place(command.clientId(), key, clock.instant());
 
         for (PlaceOrderCommand.OrderLine requested : command.orderLines()) {
-            // L'appartenance est vérifiée par DroneRegistration, propriétaire de la donnée.
+            // L'appartenance est vérifiée par DroneManagement, propriétaire de la donnée.
             drones.findForClient(requested.droneId(), command.clientId())
                     .orElseThrow(() -> new DroneNotFoundException(requested.droneId()));
 

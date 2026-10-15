@@ -1,8 +1,8 @@
 package com.candronex.common;
 
-import com.candronex.accessmanagement.published.UnknownClientException;
-import com.candronex.droneregistration.domain.DuplicateImsiException;
-import com.candronex.droneregistration.domain.InvalidNetworkIdentityException;
+import com.candronex.customermanagement.published.UnknownClientException;
+import com.candronex.dronemanagement.domain.DuplicateImsiException;
+import com.candronex.dronemanagement.domain.InvalidNetworkIdentityException;
 import com.candronex.ordermanagement.domain.DroneNotFoundException;
 import com.candronex.ordermanagement.domain.DuplicateOrderLineException;
 import org.slf4j.Logger;

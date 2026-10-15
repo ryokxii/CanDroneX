@@ -1,9 +1,9 @@
 package com.candronex.ordermanagement;
 
 import com.candronex.PostgresIntegrationTest;
-import com.candronex.droneregistration.application.RegisterDroneCommand;
-import com.candronex.droneregistration.application.RegisterDroneService;
-import com.candronex.droneregistration.domain.SimType;
+import com.candronex.dronemanagement.application.RegisterDroneCommand;
+import com.candronex.dronemanagement.application.RegisterDroneService;
+import com.candronex.dronemanagement.domain.SimType;
 import com.candronex.ordermanagement.application.PlaceOrderCommand;
 import com.candronex.ordermanagement.application.PlaceOrderResult;
 import com.candronex.ordermanagement.application.PlaceOrderService;

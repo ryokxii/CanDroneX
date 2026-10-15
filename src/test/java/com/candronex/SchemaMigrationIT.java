@@ -20,13 +20,13 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
     private JdbcTemplate jdbc;
 
     @Test
-    @DisplayName("les cinq migrations sont appliquées avec succès")
+    @DisplayName("les six migrations sont appliquées avec succès")
     void appliesAllMigrations() {
         List<String> applied = jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE success = true ORDER BY installed_rank",
                 String.class);
 
-        assertThat(applied).containsExactly("1", "2", "3", "4", "5");
+        assertThat(applied).containsExactly("1", "2", "3", "4", "5", "6");
     }
 
     @Test
@@ -41,7 +41,7 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
                 String.class);
 
         // ServiceCatalog n'a pas de schéma : son offre est figée dans le code.
-        assertThat(schemas).containsExactly("access", "drone", "orders", "public");
+        assertThat(schemas).containsExactly("customer", "drone", "orders", "public");
     }
 
     @Test
@@ -50,14 +50,14 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
         List<String> tables = jdbc.queryForList(
                 """
                 SELECT table_schema || '.' || table_name FROM information_schema.tables
-                WHERE table_schema IN ('access', 'drone', 'orders')
+                WHERE table_schema IN ('customer', 'drone', 'orders')
                 ORDER BY 1
                 """,
                 String.class);
 
         assertThat(tables).containsExactly(
-                "access.api_credentials",
-                "access.clients",
+                "customer.api_credentials",
+                "customer.clients",
                 "drone.drones",
                 "orders.order_lines",
                 "orders.service_orders");
@@ -67,7 +67,7 @@ class SchemaMigrationIT extends PostgresIntegrationTest {
     @DisplayName("le client de démonstration est amorcé, et lui seul")
     void seedsOnlyTheDemoClient() {
         List<UUID> clients = jdbc.queryForList(
-                "SELECT client_id FROM access.clients", UUID.class);
+                "SELECT client_id FROM customer.clients", UUID.class);
         assertThat(clients).containsExactly(DEMO_CLIENT);
 
         // Aucun drone ni commande : UC-02 et UC-04 doivent les produire.

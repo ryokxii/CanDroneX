@@ -1,9 +1,9 @@
 package com.candronex.ordermanagement;
 
-import com.candronex.accessmanagement.published.ClientDirectory;
-import com.candronex.accessmanagement.published.UnknownClientException;
-import com.candronex.droneregistration.published.DroneDirectory;
-import com.candronex.droneregistration.published.DroneSummary;
+import com.candronex.customermanagement.published.ClientDirectory;
+import com.candronex.customermanagement.published.UnknownClientException;
+import com.candronex.dronemanagement.published.DroneDirectory;
+import com.candronex.dronemanagement.published.DroneSummary;
 import com.candronex.ordermanagement.application.OrderPlacement;
 import com.candronex.ordermanagement.application.PlaceOrderCommand;
 import com.candronex.ordermanagement.application.PlaceOrderResult;
