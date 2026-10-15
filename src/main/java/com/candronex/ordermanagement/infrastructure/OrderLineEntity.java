@@ -1,7 +1,7 @@
 package com.candronex.ordermanagement.infrastructure;
 
 import com.candronex.ordermanagement.domain.OrderLine;
-import com.candronex.ordermanagement.domain.OrderStatus;
+import com.candronex.ordermanagement.domain.OrderLineStatus;
 import com.candronex.ordermanagement.domain.OrderedService;
 import com.candronex.ordermanagement.domain.ServiceCharacteristic;
 import jakarta.persistence.CollectionTable;
@@ -56,7 +56,7 @@ class OrderLineEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 24)
-    private OrderStatus status;
+    private OrderLineStatus status;
 
     /** Requis par l'ORM. */
     protected OrderLineEntity() {

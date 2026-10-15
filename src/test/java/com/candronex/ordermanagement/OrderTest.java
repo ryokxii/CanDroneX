@@ -4,6 +4,7 @@ import com.candronex.ordermanagement.domain.DuplicateOrderLineException;
 import com.candronex.ordermanagement.domain.IdempotencyKey;
 import com.candronex.ordermanagement.domain.Order;
 import com.candronex.ordermanagement.domain.OrderLine;
+import com.candronex.ordermanagement.domain.OrderLineStatus;
 import com.candronex.ordermanagement.domain.OrderStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -13,163 +14,161 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static com.candronex.ordermanagement.CatalogFixtures.C2;
+import static com.candronex.ordermanagement.CatalogFixtures.IMAGERY;
 import static com.candronex.ordermanagement.CatalogFixtures.c2;
 import static com.candronex.ordermanagement.CatalogFixtures.imagery;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Règles de l'agrégat Order : l'invariant d'unicité des lignes et la dérivation de l'état global.
- */
+/** Règles de l'agrégat Order : invariant des lignes et cycle de vie. */
 class OrderTest {
 
     private static final UUID CLIENT = UUID.randomUUID();
     private static final UUID DRONE = UUID.randomUUID();
-    private static final Instant NOW = Instant.parse("2026-10-04T14:15:40Z");
+    private static final Instant PLACED = Instant.parse("2026-10-04T14:15:40Z");
+    private static final Instant LATER = PLACED.plusSeconds(30);
 
-    private Order anOrder() {
-        return Order.place(CLIENT, IdempotencyKey.of("clé-1"), NOW);
-    }
-
-    @Test
-    @DisplayName("une ligne ajoutée naît à l'état RECEIVED avec le service commandé figé")
-    void newLineStartsAsReceived() {
-        Order order = anOrder();
-
-        OrderLine line = order.addLine(DRONE, c2());
-
-        assertThat(line.status()).isEqualTo(OrderStatus.RECEIVED);
-        assertThat(line.droneId()).isEqualTo(DRONE);
-        assertThat(line.service().serviceSpecificationId()).isEqualTo(C2);
-        assertThat(line.service().characteristics())
-                .extracting(characteristic -> characteristic.name() + "=" + characteristic.value())
-                .contains("sst=2", "sd=000001", "dnn=c2", "fiveQi=7", "arp=2");
-        assertThat(order.orderLines()).hasSize(1);
-    }
-
-    @Test
-    @DisplayName("refuse deux lignes pour le même couple drone et spécification")
-    void rejectsDuplicateLine() {
-        Order order = anOrder();
-        order.addLine(DRONE, c2());
-
-        assertThatThrownBy(() -> order.addLine(DRONE, c2()))
-                .isInstanceOf(DuplicateOrderLineException.class);
-
-        assertThat(order.orderLines()).hasSize(1);
-    }
-
-    @Test
-    @DisplayName("accepte deux services différents pour le même drone")
-    void acceptsDifferentServicesForSameDrone() {
-        Order order = anOrder();
-
-        order.addLine(DRONE, c2());
-        order.addLine(DRONE, imagery());
-
-        assertThat(order.orderLines()).hasSize(2);
-    }
-
-    @Test
-    @DisplayName("les lignes ne sont pas modifiables de l'extérieur")
-    void exposesLinesAsReadOnly() {
-        Order order = anOrder();
-        order.addLine(DRONE, c2());
-
-        assertThatThrownBy(() -> order.orderLines().clear())
-                .isInstanceOf(UnsupportedOperationException.class);
+    private static Order anOrder() {
+        return Order.place(CLIENT, IdempotencyKey.of("clé-1"), PLACED);
     }
 
     @Nested
-    @DisplayName("dérivation de l'état global")
-    class StatusDerivation {
+    @DisplayName("lignes")
+    class Lines {
 
         @Test
-        @DisplayName("toutes les lignes RECEIVED donnent une commande RECEIVED")
-        void allReceived() {
+        @DisplayName("une ligne ajoutée naît à l'état RECEIVED avec le service commandé figé")
+        void newLineStartsAsReceivedWithFrozenService() {
             Order order = anOrder();
+
+            OrderLine line = order.addLine(DRONE, c2());
+
+            assertThat(line.status()).isEqualTo(OrderLineStatus.RECEIVED);
+            assertThat(line.droneId()).isEqualTo(DRONE);
+            assertThat(line.service().serviceSpecificationId()).isEqualTo(C2);
+            assertThat(line.service().characteristics())
+                    .extracting(characteristic -> characteristic.name() + "=" + characteristic.value())
+                    .contains("sst=2", "sd=000001", "dnn=c2", "fiveQi=7", "arp=2");
+        }
+
+        @Test
+        @DisplayName("refuse deux lignes pour le même couple drone et spécification")
+        void rejectsDuplicateLine() {
+            Order order = anOrder();
+            order.addLine(DRONE, c2());
+
+            assertThatThrownBy(() -> order.addLine(DRONE, c2()))
+                    .isInstanceOf(DuplicateOrderLineException.class);
+
+            assertThat(order.orderLines()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("accepte deux services différents pour le même drone, dans l'ordre de la demande")
+        void acceptsDifferentServicesForSameDrone() {
+            Order order = anOrder();
+
             order.addLine(DRONE, c2());
             order.addLine(DRONE, imagery());
 
-            assertThat(order.status()).isEqualTo(OrderStatus.RECEIVED);
+            assertThat(order.orderLines())
+                    .extracting(line -> line.service().serviceSpecificationId())
+                    .containsExactly(C2, IMAGERY);
         }
 
         @Test
-        @DisplayName("une ligne encore en cours donne une commande IN_PROGRESS")
-        void someStillRunning() {
+        @DisplayName("les lignes ne sont pas modifiables de l'extérieur")
+        void exposesLinesAsReadOnly() {
             Order order = anOrder();
-            UUID first = order.addLine(DRONE, c2()).orderLineId();
-            order.addLine(DRONE, imagery());
+            order.addLine(DRONE, c2());
 
-            order.updateLineStatus(first, OrderStatus.COMPLETED, NOW);
+            assertThatThrownBy(() -> order.orderLines().clear())
+                    .isInstanceOf(UnsupportedOperationException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("cycle de vie")
+    class Lifecycle {
+
+        @Test
+        @DisplayName("la commande dérive son état de ses lignes, à chaque transition")
+        void derivesStatusOnEveryTransition() {
+            Order order = anOrder();
+            UUID c2 = order.addLine(DRONE, c2()).orderLineId();
+            UUID imagery = order.addLine(DRONE, imagery()).orderLineId();
+            assertThat(order.status()).isEqualTo(OrderStatus.RECEIVED);
+
+            order.updateLineStatus(c2, OrderLineStatus.IN_PROGRESS, LATER);
+            assertThat(order.status()).isEqualTo(OrderStatus.IN_PROGRESS);
+
+            order.updateLineStatus(c2, OrderLineStatus.COMPLETED, LATER);
+            order.updateLineStatus(imagery, OrderLineStatus.IN_PROGRESS, LATER);
+            order.updateLineStatus(imagery, OrderLineStatus.FAILED, LATER);
+            assertThat(order.status()).isEqualTo(OrderStatus.PARTIAL);
+        }
+
+        @Test
+        @DisplayName("la date d'achèvement n'existe que lorsque plus aucune ligne n'attend de résultat")
+        void completedAtFollowsPendingLines() {
+            Order order = anOrder();
+            UUID c2 = order.addLine(DRONE, c2()).orderLineId();
+            UUID imagery = order.addLine(DRONE, imagery()).orderLineId();
+
+            order.updateLineStatus(c2, OrderLineStatus.IN_PROGRESS, LATER);
+            order.updateLineStatus(c2, OrderLineStatus.COMPLETED, LATER);
+            assertThat(order.completedAt()).isNull();
+
+            order.updateLineStatus(imagery, OrderLineStatus.IN_PROGRESS, LATER);
+            order.updateLineStatus(imagery, OrderLineStatus.FAILED, LATER);
+            assertThat(order.status()).isEqualTo(OrderStatus.PARTIAL);
+            assertThat(order.completedAt()).isEqualTo(LATER);
+        }
+
+        @Test
+        @DisplayName("une reprise (UC-10) rouvre la commande et efface sa date d'achèvement")
+        void resumptionReopensTheOrder() {
+            Order order = anOrder();
+            UUID c2 = order.addLine(DRONE, c2()).orderLineId();
+            order.updateLineStatus(c2, OrderLineStatus.IN_PROGRESS, LATER);
+            order.updateLineStatus(c2, OrderLineStatus.FAILED, LATER);
+            assertThat(order.status()).isEqualTo(OrderStatus.FAILED);
+            assertThat(order.completedAt()).isEqualTo(LATER);
+
+            order.updateLineStatus(c2, OrderLineStatus.IN_PROGRESS, LATER.plusSeconds(60));
 
             assertThat(order.status()).isEqualTo(OrderStatus.IN_PROGRESS);
+            assertThat(order.completedAt()).isNull();
         }
 
         @Test
-        @DisplayName("toutes les lignes COMPLETED donnent une commande COMPLETED")
-        void allCompleted() {
+        @DisplayName("refuse une transition interdite : une ligne rendue ne revient pas en arrière")
+        void rejectsForbiddenTransitions() {
             Order order = anOrder();
-            UUID first = order.addLine(DRONE, c2()).orderLineId();
-            UUID second = order.addLine(DRONE, imagery()).orderLineId();
+            UUID c2 = order.addLine(DRONE, c2()).orderLineId();
 
-            order.updateLineStatus(first, OrderStatus.COMPLETED, NOW);
-            order.updateLineStatus(second, OrderStatus.COMPLETED, NOW);
+            assertThatThrownBy(() -> order.updateLineStatus(c2, OrderLineStatus.COMPLETED, LATER))
+                    .isInstanceOf(IllegalStateException.class);
 
+            order.updateLineStatus(c2, OrderLineStatus.IN_PROGRESS, LATER);
+            order.updateLineStatus(c2, OrderLineStatus.COMPLETED, LATER);
+            assertThatThrownBy(() -> order.updateLineStatus(c2, OrderLineStatus.RECEIVED, LATER))
+                    .isInstanceOf(IllegalStateException.class);
             assertThat(order.status()).isEqualTo(OrderStatus.COMPLETED);
-            assertThat(order.completedAt()).isEqualTo(NOW);
         }
 
         @Test
-        @DisplayName("un service rendu et un en échec donnent PARTIALLY_COMPLETED")
-        void mixedOutcomesArePartial() {
+        @DisplayName("seule une ligne non commencée peut être annulée")
+        void onlyUnstartedLinesCanBeCancelled() {
             Order order = anOrder();
             UUID c2 = order.addLine(DRONE, c2()).orderLineId();
             UUID imagery = order.addLine(DRONE, imagery()).orderLineId();
 
-            order.updateLineStatus(c2, OrderStatus.COMPLETED, NOW);
-            order.updateLineStatus(imagery, OrderStatus.FAILED, NOW);
+            order.updateLineStatus(c2, OrderLineStatus.CANCELLED, LATER);
+            order.updateLineStatus(imagery, OrderLineStatus.IN_PROGRESS, LATER);
 
-            // Sans cet état, la commande tomberait en FAILED et masquerait
-            // la liaison C2 pourtant active et facturable.
-            assertThat(order.status()).isEqualTo(OrderStatus.PARTIALLY_COMPLETED);
-        }
-
-        @Test
-        @DisplayName("aucune ligne rendue donne une commande FAILED")
-        void noneCompletedIsFailed() {
-            Order order = anOrder();
-            UUID c2 = order.addLine(DRONE, c2()).orderLineId();
-            UUID imagery = order.addLine(DRONE, imagery()).orderLineId();
-
-            order.updateLineStatus(c2, OrderStatus.FAILED, NOW);
-            order.updateLineStatus(imagery, OrderStatus.CANCELLED, NOW);
-
-            assertThat(order.status()).isEqualTo(OrderStatus.FAILED);
-        }
-
-        @Test
-        @DisplayName("toutes les lignes annulées donnent une commande CANCELLED")
-        void allCancelled() {
-            Order order = anOrder();
-            UUID c2 = order.addLine(DRONE, c2()).orderLineId();
-            UUID imagery = order.addLine(DRONE, imagery()).orderLineId();
-
-            order.updateLineStatus(c2, OrderStatus.CANCELLED, NOW);
-            order.updateLineStatus(imagery, OrderStatus.CANCELLED, NOW);
-
-            assertThat(order.status()).isEqualTo(OrderStatus.CANCELLED);
-        }
-
-        @Test
-        @DisplayName("une ligne ne peut pas être partiellement rendue")
-        void lineCannotBePartiallyCompleted() {
-            Order order = anOrder();
-            UUID line = order.addLine(DRONE, c2()).orderLineId();
-
-            assertThatThrownBy(() ->
-                    order.updateLineStatus(line, OrderStatus.PARTIALLY_COMPLETED, NOW))
-                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> order.updateLineStatus(imagery, OrderLineStatus.CANCELLED, LATER))
+                    .isInstanceOf(IllegalStateException.class);
         }
     }
 }

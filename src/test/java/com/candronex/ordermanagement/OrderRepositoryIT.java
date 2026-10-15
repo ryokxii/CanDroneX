@@ -10,6 +10,7 @@ import com.candronex.ordermanagement.application.PlaceOrderService;
 import com.candronex.ordermanagement.domain.IdempotencyKey;
 import com.candronex.ordermanagement.domain.Order;
 import com.candronex.ordermanagement.domain.OrderLine;
+import com.candronex.ordermanagement.domain.OrderLineStatus;
 import com.candronex.ordermanagement.domain.OrderStatus;
 import com.candronex.ordermanagement.domain.port.OrderRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,6 +88,29 @@ class OrderRepositoryIT extends PostgresIntegrationTest {
     }
 
     @Test
+    @DisplayName("un changement d'état et la date d'achèvement survivent à l'aller-retour en base")
+    void persistsLifecycleChanges() {
+        placeOrder.placeOrder(twoServices(KEY));
+        Order order = reload(KEY);
+        Instant settled = Instant.parse("2026-10-04T15:00:00Z");
+
+        UUID c2Line = order.orderLines().get(0).orderLineId();
+        UUID imageryLine = order.orderLines().get(1).orderLineId();
+        order.updateLineStatus(c2Line, OrderLineStatus.IN_PROGRESS, settled);
+        order.updateLineStatus(c2Line, OrderLineStatus.COMPLETED, settled);
+        order.updateLineStatus(imageryLine, OrderLineStatus.IN_PROGRESS, settled);
+        order.updateLineStatus(imageryLine, OrderLineStatus.FAILED, settled);
+        orders.save(order);
+
+        Order reloaded = reload(KEY);
+        assertThat(reloaded.status()).isEqualTo(OrderStatus.PARTIAL);
+        assertThat(reloaded.completedAt()).isEqualTo(settled);
+        assertThat(reloaded.orderLines())
+                .extracting(OrderLine::status)
+                .containsExactly(OrderLineStatus.COMPLETED, OrderLineStatus.FAILED);
+    }
+
+    @Test
     @DisplayName("la contrainte UNIQUE (client_id, idempotency_key) refuse un doublon")
     void enforcesIdempotencyKeyUniqueness() {
         placeOrder.placeOrder(twoServices(KEY));
@@ -123,6 +147,15 @@ class OrderRepositoryIT extends PostgresIntegrationTest {
 
         assertThat(second.created()).isTrue();
         assertThat(second.order().orderId()).isNotEqualTo(first.order().orderId());
+    }
+
+    @Test
+    @DisplayName("la contrainte CHECK refuse une ligne à l'état PARTIAL, réservé à la commande")
+    void lineCannotBePartialInDatabase() {
+        placeOrder.placeOrder(twoServices(KEY));
+
+        assertThatThrownBy(() -> jdbc.update("UPDATE orders.order_lines SET status = 'PARTIAL'"))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test

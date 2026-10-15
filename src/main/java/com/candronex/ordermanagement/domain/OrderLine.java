@@ -9,9 +9,10 @@ public final class OrderLine {
     private final UUID orderLineId;
     private final UUID droneId;
     private final OrderedService service;
-    private OrderStatus status;
+    private OrderLineStatus status;
 
-    private OrderLine(UUID orderLineId, UUID droneId, OrderedService service, OrderStatus status) {
+    private OrderLine(UUID orderLineId, UUID droneId, OrderedService service,
+                      OrderLineStatus status) {
         this.orderLineId = Objects.requireNonNull(orderLineId, "orderLineId");
         this.droneId = Objects.requireNonNull(droneId, "droneId");
         this.service = Objects.requireNonNull(service, "service");
@@ -20,22 +21,22 @@ public final class OrderLine {
 
     /** Visible de l'agrégat seul : une ligne ne se crée que par Order.addLine. */
     static OrderLine receive(UUID droneId, OrderedService service) {
-        return new OrderLine(UUID.randomUUID(), droneId, service, OrderStatus.RECEIVED);
+        return new OrderLine(UUID.randomUUID(), droneId, service, OrderLineStatus.RECEIVED);
     }
 
     /** Reconstitue une ligne enregistrée ; réservé à l'adaptateur de persistance. */
     public static OrderLine restore(UUID orderLineId, UUID droneId, OrderedService service,
-                                    OrderStatus status) {
+                                    OrderLineStatus status) {
         return new OrderLine(orderLineId, droneId, service, status);
     }
 
-    /** Fait évoluer l'état de la ligne. */
-    void changeStatus(OrderStatus newStatus) {
-        if (newStatus == OrderStatus.PARTIALLY_COMPLETED) {
-            throw new IllegalArgumentException(
-                    "PARTIALLY_COMPLETED ne s'applique qu'à une commande, pas à une ligne.");
+    /** Visible de l'agrégat seul : l'état d'une ligne ne change que par Order.updateLineStatus. */
+    void transitionTo(OrderLineStatus next) {
+        if (!status.canTransitionTo(next)) {
+            throw new IllegalStateException(
+                    "Transition interdite pour la ligne " + orderLineId + " : " + status + " → " + next);
         }
-        this.status = newStatus;
+        this.status = next;
     }
 
     public OrderLineKey key() {
@@ -54,7 +55,7 @@ public final class OrderLine {
         return service;
     }
 
-    public OrderStatus status() {
+    public OrderLineStatus status() {
         return status;
     }
 

@@ -10,6 +10,8 @@ import java.util.UUID;
 /** Racine d'agrégat du contexte OrderManagement (TMF641) : la commande de services d'un client B2B. */
 public final class Order {
 
+    private static final OrderStatusPolicy STATUS_POLICY = new OrderStatusPolicy();
+
     private final UUID orderId;
     private final UUID clientId;
     private final IdempotencyKey idempotencyKey;
@@ -67,56 +69,28 @@ public final class Order {
 
         OrderLine line = OrderLine.receive(droneId, service);
         orderLines.add(line);
-        this.status = deriveStatus();
+        this.status = STATUS_POLICY.derive(lineStatuses());
         return line;
     }
 
-    /** Dérive l'état global des lignes ; la première règle qui s'applique l'emporte. */
-    public OrderStatus deriveStatus() {
-        if (orderLines.isEmpty()) {
-            return OrderStatus.RECEIVED;
-        }
-        if (allLinesAre(OrderStatus.RECEIVED)) {
-            return OrderStatus.RECEIVED;
-        }
-        boolean someStillRunning = orderLines.stream()
-                .anyMatch(line -> !line.status().isTerminal());
-        if (someStillRunning) {
-            return OrderStatus.IN_PROGRESS;
-        }
-        if (allLinesAre(OrderStatus.COMPLETED)) {
-            return OrderStatus.COMPLETED;
-        }
-        if (allLinesAre(OrderStatus.CANCELLED)) {
-            return OrderStatus.CANCELLED;
-        }
-        boolean someCompleted = orderLines.stream()
-                .anyMatch(line -> line.status() == OrderStatus.COMPLETED);
-        return someCompleted ? OrderStatus.PARTIALLY_COMPLETED : OrderStatus.FAILED;
-    }
-
-    /** Fait évoluer l'état d'une ligne, puis recalcule celui de la commande. */
-    public void updateLineStatus(UUID orderLineId, OrderStatus newStatus, Instant now) {
+    /**
+     * Fait évoluer l'état d'une ligne, puis recalcule celui de la commande. La date d'achèvement
+     * n'existe que tant qu'aucune ligne n'attend de résultat : une reprise l'efface.
+     */
+    public void updateLineStatus(UUID orderLineId, OrderLineStatus newStatus, Instant now) {
         OrderLine line = orderLines.stream()
                 .filter(candidate -> candidate.orderLineId().equals(orderLineId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Ligne inconnue dans cette commande : " + orderLineId));
 
-        line.changeStatus(newStatus);
-        this.status = deriveStatus();
-        this.completedAt = this.status.isTerminal() || this.status == OrderStatus.PARTIALLY_COMPLETED
-                ? now
-                : null;
+        line.transitionTo(newStatus);
+        this.status = STATUS_POLICY.derive(lineStatuses());
+        this.completedAt = status.isPending() ? null : now;
     }
 
-    private boolean allLinesAre(OrderStatus expected) {
-        return orderLines.stream().allMatch(line -> line.status() == expected);
-    }
-
-    /** Une commande n'a de sens qu'avec au moins une ligne. */
-    public boolean hasLines() {
-        return !orderLines.isEmpty();
+    private List<OrderLineStatus> lineStatuses() {
+        return orderLines.stream().map(OrderLine::status).toList();
     }
 
     public boolean belongsTo(UUID candidateClientId) {

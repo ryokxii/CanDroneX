@@ -1,28 +1,31 @@
 package com.candronex.ordermanagement.domain;
 
-/** État d'une commande et de ses lignes. */
+/**
+ * État global d'une commande, toujours dérivé de l'état de ses lignes par OrderStatusPolicy ;
+ * jamais saisi.
+ */
 public enum OrderStatus {
 
-    /** Enregistrée, pas encore prise en charge. */
+    /** Toutes les lignes sont reçues ; aucun traitement n'a commencé. */
     RECEIVED,
 
-    /** Au moins une ligne est en cours d'activation. */
+    /** Au moins une ligne attend encore un résultat. */
     IN_PROGRESS,
 
-    /** Service rendu. */
+    /** Toutes les lignes sont rendues. */
     COMPLETED,
 
-    /** Commande seulement : certaines lignes rendues, d'autres non. */
-    PARTIALLY_COMPLETED,
+    /** Certaines lignes rendues, les autres en échec ou annulées (TMF641 : partial). */
+    PARTIAL,
 
-    /** Activation définitivement en échec. */
+    /** Aucune ligne rendue, et au moins une en échec. */
     FAILED,
 
-    /** Annulée avant d'avoir été honorée ; rien n'a été consommé. */
+    /** Toutes les lignes annulées avant d'avoir été traitées. */
     CANCELLED;
 
-    /** Un état terminal ne change plus : il n'attend aucune activation. */
-    public boolean isTerminal() {
-        return this == COMPLETED || this == FAILED || this == CANCELLED;
+    /** Vrai tant qu'une ligne attend un résultat ; la commande n'a alors pas de date d'achèvement. */
+    public boolean isPending() {
+        return this == RECEIVED || this == IN_PROGRESS;
     }
 }
