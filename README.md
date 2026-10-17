@@ -42,19 +42,13 @@ démonstration.
 docker compose ps
 ```
 
-Les deux conteneurs doivent être à l'état `running (healthy)`. Puis, de bout en bout :
+Les deux conteneurs doivent être à l'état `running (healthy)`. Le scénario de bout en bout
+obtient un jeton, enregistre un drone (UC-02), puis commande ses services (UC-04).
 
-```bash
-./scripts/demo.sh
-```
+### Scénario de bout en bout
 
-Le script obtient un jeton, enregistre un drone (UC-02), commande ses deux services (UC-04),
-rejoue la commande et vérifie les principaux refus. Il est rejouable : chaque exécution utilise
-un nouvel IMSI et un nouvel ICCID d'essai (PLMN 999-70, réservé aux essais).
-
-### Obtenir un jeton à la main
-
-Le client de démonstration est amorcé par les migrations `V4` et `V5`.
+Le client de démonstration est amorcé par les migrations `V4` et `V5`. L'IMSI et l'ICCID
+d'exemple emploient le PLMN d'essai 999-70, qui n'appartient à aucun opérateur réel.
 
 | | |
 |---|---|
