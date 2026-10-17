@@ -2,14 +2,14 @@
 
 Plateforme B2B de connectivité 5G pour exploitants de drones — monolithe modulaire (LOG430).
 
-Le dépôt contient le code, le `docker-compose.yml` qui démarre l'application et sa base,
-les contrats d'API (`docs/api/openapi.yaml`) et les diagrammes d'architecture (`docs/diagrams/`).
+Le dépôt contient le code et le `docker-compose.yml` qui démarre l'application et sa base.
+Le contrat d'API (OpenAPI) et les diagrammes d'architecture sont remis avec le rapport, hors du dépôt.
 
 | Cas d'utilisation | État |
 |---|---|
 | UC-02 — Enregistrer un drone et son identité réseau | Implémenté |
 | UC-04 — Commander les services de connectivité d'un drone | Implémenté |
-| UC-06 — Activer et configurer un slice | Modélisé (`docs/diagrams/modele-domaine.puml`), non implémenté |
+| UC-06 — Activer et configurer un slice | Modélisé dans le rapport, non implémenté |
 
 ## Prérequis
 
