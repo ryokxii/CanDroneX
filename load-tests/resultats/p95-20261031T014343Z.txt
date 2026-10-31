@@ -1,0 +1,9 @@
+-[ RECORD 1 ]+-------
+services     | 118892
+actifs       | 116045
+echecs       | 2412
+non_termines | 435
+p50_s        | 1.239
+p95_s        | 1.797
+pct_sous_5s  | 96.61
+
