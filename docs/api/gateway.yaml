@@ -14,8 +14,10 @@ info:
     (`http://localhost:8081/realms/candronex`), puis transmet `Authorization` au microservice,
     qui revalide le jeton et lit la claim `azp`.
 
-    **Microservice arrêté.** La passerelle répond 503 en `application/problem+json`, avec le
-    même format que les erreurs des microservices.
+    **Microservice arrêté.** KrakenD 2.7 (édition communautaire) répond 500 sans corps : seules
+    ses erreurs de routage (404, 405) ont un corps configurable. Quand c'est un service appelé
+    par un microservice qui est indisponible, le microservice répond lui-même 503
+    `dependency-unavailable` en `application/problem+json`.
 
     **Version.** Majeure dans le chemin (`/api/v1`). Seul un changement incompatible du contrat
     ouvre `/api/v2` ; `/api/v1` reste alors servie, avec les en-têtes `Deprecation` et

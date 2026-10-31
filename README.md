@@ -1,135 +1,167 @@
 # CanDroneX
 
-Plateforme B2B de connectivité 5G pour exploitants de drones — monolithe modulaire (LOG430).
+Plateforme B2B de connectivité 5G pour exploitants de drones — Phase 2, microservices (LOG430).
 
-Le dépôt contient le code et le `docker-compose.yml` qui démarre l'application et sa base.
-Le contrat d'API (OpenAPI) et les diagrammes d'architecture sont remis avec le rapport, hors du dépôt.
+| Cas d'utilisation | Service | État |
+|---|---|---|
+| UC-02 — Enregistrer un drone et son identité réseau | Drone Service | Implémenté |
+| UC-04 — Commander les services de connectivité d'un drone | Order Service | Implémenté |
+| UC-06 — Activer et configurer un slice | Slice Service | Implémenté, réseau 5G simulé |
 
-| Cas d'utilisation | État |
-|---|---|
-| UC-02 — Enregistrer un drone et son identité réseau | Implémenté |
-| UC-04 — Commander les services de connectivité d'un drone | Implémenté |
-| UC-06 — Activer et configurer un slice | Modélisé dans le rapport, non implémenté |
+## Architecture
+
+```
+Client B2B ──(1) client_credentials──► Keycloak :8081 (realm candronex, fourni)
+     │
+     │ (2) Authorization: Bearer <JWT>
+     ▼
+KrakenD :8080 ──► Drone Service ─► drone_db
+     │            ▲ GET /api/v1/drones/{id}, jeton du client
+     └──────────► Order Service ─► order_db (catalogue, commandes)
+                  │ /internal/v1/service-activations, jeton de service order-service
+                  ▼
+                  Slice Service ─► slice_db (activation, inventaire)
+                  └─ NetworkProvisioningPort → MockOpen5GSAdapter (dans le processus)
+```
+
+Seuls la passerelle (8080), Keycloak (8081) et Swagger UI (8090) sont publiés. Les services
+et leurs bases ne sont joignables que sur le réseau `candronex-net`. Chaque service revalide
+le jeton (signature, expiration, émetteur, audience `candronex-api`) et lit le client dans la
+claim `azp` ; l'en-tête `X-Client-Id` n'est jamais lu.
 
 ## Prérequis
 
 - Docker Desktop (ou Docker Engine avec Compose v2), en cours d'exécution.
-- Le port `8080` libre sur le poste.
+- Les ports `8080`, `8081` et `8090` libres.
 
 Java et Maven ne sont nécessaires que pour exécuter les tests hors conteneur (JDK 21 ou plus récent).
 
 ## Démarrer
 
-Les secrets ne sont pas versionnés : créez le fichier d'environnement à partir du gabarit.
-
 ```bash
 cp .env.example .env
 ```
 
-Puis démarrez l'application et la base de données :
+Remplacez chaque `changez-moi` par un secret de votre choix, puis :
 
 ```bash
-docker compose up --build
+docker compose up --build -d --wait
 ```
 
-Au démarrage, Flyway applique les migrations `V1` à `V10` : schémas `customer`, `drone`,
-`orders` et `catalog`, catalogue de référence (C2 / URLLC et Imagerie / eMBB), et client de
-démonstration.
+Keycloak importe le realm `candronex` et ses clients ; aucune configuration manuelle n'est
+nécessaire. Avec `SPRING_PROFILES_ACTIVE=demo` (défaut), Flyway charge aussi le jeu de
+démonstration (`db/demo/R__donnees_demo.sql`) : 4 drones, 4 commandes, 4 services.
 
-## Vérifier
+## Démontrer
 
 ```bash
-docker compose ps
+scripts/demo-phase2.sh
 ```
 
-Les deux conteneurs doivent être à l'état `running (healthy)`. Le scénario de bout en bout
-obtient un jeton, enregistre un drone (UC-02), puis commande ses services (UC-04).
+Le script obtient les jetons, vérifie la sécurité (401, jeton modifié ou non signé, 404
+interclient, `X-Client-Id` forgé), puis enchaîne UC-02, UC-04 (201, rejeu 200, 409, 400) et
+UC-06, dont il affiche le parcours dans les journaux.
 
-### Scénario de bout en bout
-
-Le client de démonstration est amorcé par les migrations `V4` et `V5`. L'IMSI et l'ICCID
-d'exemple emploient le PLMN d'essai 999-70, qui n'appartient à aucun opérateur réel.
-
-| | |
-|---|---|
-| `client_id` | `0b6f1c2e-8f4a-4d3b-9c71-5e2a7d9f3b10` |
-| `client_secret` | `inspectra-demo-secret` |
+Pour appeler l'API à la main :
 
 ```bash
-curl -s -X POST http://localhost:8080/oauth2/token \
-  -u 0b6f1c2e-8f4a-4d3b-9c71-5e2a7d9f3b10:inspectra-demo-secret \
-  -d grant_type=client_credentials
-```
+TOKEN=$(curl -s -X POST http://localhost:8081/realms/candronex/protocol/openid-connect/token \
+  -d grant_type=client_credentials -d client_id=inspectra-demo \
+  -d client_secret="$INSPECTRA_DEMO_SECRET" | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 
-Le champ `access_token` de la réponse s'emploie ensuite dans l'en-tête
-`Authorization: Bearer <jeton>` ; il est valide 15 minutes.
-
-```bash
 curl -s -X POST http://localhost:8080/api/v1/drones \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"imsi":"999700000010231","iccid":"8999700000000010239","simType":"ESIM"}'
+  -d '{"imsi":"302720123456700","iccid":"8930272000000000019","simType":"ESIM"}'
 
 curl -s -X POST http://localhost:8080/api/v1/service-orders \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"orderLines":[{"droneId":"<droneId>","serviceSpecificationId":"C2_URLLC"}]}'
+  -d '{"orderLines":[{"droneId":"<droneId>","serviceSpecificationId":"C2_URLLC"},
+                    {"droneId":"<droneId>","serviceSpecificationId":"IMAGERY_EMBB"}]}'
 ```
 
-## Arrêter et réinitialiser
+Le jeton est valide 300 s. La consultation d'une commande (UC-05) est hors périmètre : l'état
+final se lit dans les journaux.
+
+## Contrats OpenAPI
+
+Swagger UI : <http://localhost:8090>. Les contrats sont dans `docs/api/` : `gateway.yaml`
+(contrat B2B), `drone-service.yaml`, `order-service.yaml`, `slice-service.yaml` (interne).
+
+## Journaux
 
 ```bash
-docker compose down
+docker compose logs -f order-service slice-service
+docker compose logs --no-color order-service | grep "orderId=<orderId>"
 ```
 
-Les conteneurs sont supprimés, le volume `candronex-data` est conservé.
+Chaque ligne porte l'horodatage UTC, `service`, `correlationId` (en-tête `X-Correlation-Id`,
+transmis d'un service à l'autre) et l'événement : `order-received`, `activation-requested`,
+`network-call`, `activation-result`, `order-status`, ou `status` et `error` pour une erreur.
 
-```bash
-docker compose down -v
-```
+## Réseau simulé
 
-Supprime aussi le volume : au démarrage suivant, la base est recréée et les migrations rejouées.
-C'est nécessaire si le volume contient des drones enregistrés avant `V7` (ajout de l'ICCID).
+| Variable | Défaut | Effet |
+|---|---|---|
+| `MOCK_LATENCY_MS` | 1200 | Latence moyenne d'un appel (± 50 %) |
+| `MOCK_FAILURE_RATE` | 0.1 | Part des activations refusées → `FAILED` |
+| `MOCK_TIMEOUT_RATE` | 0.05 | Part des appels sans réponse dans le délai → `UNCONFIRMED` |
+| `MOCK_TIMEOUT` | 5s | Délai d'un appel au réseau |
+
+Un service `UNCONFIRMED` n'est pas un échec : toutes les 10 s, Slice Service lit son état réel
+(`findStatus`) avant toute reprise, et ne reconfigure jamais un service déjà actif.
 
 ## Tests
 
 ```bash
-mvn test
+mvn test     # tests unitaires et d'API, sans Docker
+mvn verify   # ajoute les *IT, sur PostgreSQL 16 (Testcontainers) ; Docker requis
 ```
 
-Tests unitaires et tests d'API (`*Test`), sans base ni conteneur : 119 tests.
+## Mesure de performance
 
 ```bash
-mvn verify
+MOCK_FAILURE_RATE=0.02 MOCK_TIMEOUT_RATE=0.01 docker compose up -d --wait
+scripts/mesurer-performance.sh          # 1 min de montée, puis 5 min à 600 op/s
 ```
 
-Ajoute les tests d'intégration (`*IT`), exécutés par Failsafe sur un PostgreSQL 16 réel démarré
-par Testcontainers : 20 tests. Docker doit être en cours d'exécution.
+k6 s'exécute dans un conteneur sur `candronex-net` (60 % consultations, 30 % commandes,
+10 % enregistrements). Le script calcule ensuite, dans `slice_db`, le P95 du délai entre
+`acceptedAt` et `activatedAt` ; un service non actif à la fin compte comme dépassant 5 s.
+Les résultats sont écrits dans `load-tests/resultats/`.
+
+## Arrêter et réinitialiser
+
+```bash
+docker compose down       # conserve les volumes
+docker compose down -v    # supprime les trois bases ; le prochain démarrage les recrée
+```
 
 ## Organisation
 
 ```
-src/main/java/com/candronex/
-  customermanagement/   client B2B, identifiant d'accès, jetons OAuth 2.0
-  dronemanagement/      drone et identité réseau (IMSI, ICCID) — UC-02
-  servicecatalog/       spécifications de service et caractéristiques (TMF633)
-  ordermanagement/      commande, lignes, service commandé figé (TMF641) — UC-04
-  common/               traduction des erreurs (RFC 9457), sécurité, horloge
+platform/        code technique commun : validation du JWT, erreurs RFC 9457, corrélation
+drone-service/   UC-02 — drone et identité réseau (IMSI, ICCID)
+order-service/   UC-04 — catalogue (TMF633), commande (TMF641), appels à Drone et Slice Service
+slice-service/   UC-06 — activation (TMF640), inventaire (TMF638), réseau simulé
+gateway/         configuration KrakenD
+keycloak/        realm candronex importé au démarrage
+docs/api/        contrats OpenAPI 3.0.1
+load-tests/      scénario k6 et calcul du P95
+scripts/         démonstration et mesure
 ```
 
-Chaque module suit la même structure : `api` (adaptateurs entrants), `application` (services
-applicatifs), `domain` (modèle, sans dépendance au cadriciel ni à l'ORM) et `domain/port`
-(ports sortants), `infrastructure` (adaptateurs JPA), `published` (contrat offert aux autres
-modules). Un module n'appelle un autre module que par son paquet `published`.
+Chaque service suit la même structure hexagonale : `api` (adaptateurs entrants), `application`
+(cas d'utilisation), `domain` et `domain/port` (modèle et ports, sans dépendance au cadriciel),
+`infrastructure` (persistance JPA, clients REST, réseau simulé). Aucun service ne lit la base
+d'un autre ; `platform` ne partage aucun type du domaine.
 
 ## Secrets
 
-`.env` n'est jamais versionné ni livré : seul `.env.example` l'est. Pour produire une archive de
-remise sans fichier non suivi, utilisez :
+`.env` n'est jamais versionné ni livré : seul `.env.example` l'est. Le realm et les services
+lisent les secrets dans l'environnement ; aucun secret ni jeton n'est écrit dans les journaux.
+Pour produire une archive de remise sans fichier non suivi :
 
 ```bash
 git archive --format=zip --output=candronex.zip HEAD
 ```
-
-Le secret `inspectra-demo-secret` est un secret de démonstration, publié volontairement dans ce
-README et dans la migration `V5`. Un environnement réel ne doit jamais démarrer avec lui : la
-rotation des identifiants relève d'UC-01, hors périmètre.
