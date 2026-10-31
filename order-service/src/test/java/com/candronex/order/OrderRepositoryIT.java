@@ -1,5 +1,6 @@
 package com.candronex.order;
 
+import com.candronex.order.application.DependencyUnavailableException;
 import com.candronex.order.application.PlaceOrderCommand;
 import com.candronex.order.application.PlaceOrderResult;
 import com.candronex.order.application.PlaceOrderService;
@@ -11,6 +12,8 @@ import com.candronex.order.domain.OrderLineStatus;
 import com.candronex.order.domain.OrderStatus;
 import com.candronex.order.domain.port.DroneOwnershipPort;
 import com.candronex.order.domain.port.OrderRepository;
+import com.candronex.order.domain.port.ServiceActivationPort;
+import com.candronex.order.domain.port.ServiceState;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,6 +32,7 @@ import static com.candronex.order.CatalogFixtures.c2;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 
 /** Persistance d'Order Service, sur PostgreSQL réel, avec le catalogue amorcé par V1. */
@@ -47,6 +51,9 @@ class OrderRepositoryIT extends PostgresIntegrationTest {
     @MockitoBean
     private DroneOwnershipPort drones;
 
+    @MockitoBean
+    private ServiceActivationPort activations;
+
     @Autowired
     private JdbcTemplate jdbc;
 
@@ -57,6 +64,9 @@ class OrderRepositoryIT extends PostgresIntegrationTest {
         jdbc.execute("TRUNCATE TABLE orders.service_orders CASCADE");
         drone = UUID.randomUUID();
         when(drones.isOwnedBy(any(), any())).thenReturn(true);
+        // Slice Service injoignable par défaut : les lignes restent RECEIVED.
+        when(activations.request(any(), any(), any()))
+                .thenThrow(new DependencyUnavailableException("Slice Service indisponible", null));
     }
 
     private PlaceOrderCommand twoServices(String key) {
@@ -179,5 +189,19 @@ class OrderRepositoryIT extends PostgresIntegrationTest {
                 "SELECT count(*) FROM orders.order_lines", Integer.class)).isZero();
         assertThat(jdbc.queryForObject(
                 "SELECT count(*) FROM orders.order_line_characteristics", Integer.class)).isZero();
+    }
+
+    @Test
+    @DisplayName("activation acceptée par Slice Service : lignes et commande IN_PROGRESS en base")
+    void acceptedActivationMovesLinesInProgress() {
+        doReturn(ServiceState.PENDING).when(activations).request(any(), any(), any());
+
+        PlaceOrderResult placed = placeOrder.placeOrder(twoServices(KEY));
+
+        assertThat(placed.order().status()).isEqualTo("IN_PROGRESS");
+        Order reloaded = reload(KEY);
+        assertThat(reloaded.status()).isEqualTo(OrderStatus.IN_PROGRESS);
+        assertThat(reloaded.orderLines()).extracting(OrderLine::status)
+                .containsExactly(OrderLineStatus.IN_PROGRESS, OrderLineStatus.IN_PROGRESS);
     }
 }

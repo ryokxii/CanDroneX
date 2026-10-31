@@ -6,6 +6,7 @@ import com.candronex.order.domain.port.OrderRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +28,20 @@ class InMemoryOrderRepository implements OrderRepository {
                 .filter(order -> order.clientId().equals(clientId))
                 .filter(order -> order.idempotencyKey().equals(key))
                 .findFirst();
+    }
+
+    @Override
+    public Optional<Order> findByIdForUpdate(UUID orderId) {
+        return Optional.ofNullable(byId.get(orderId));
+    }
+
+    @Override
+    public List<UUID> findPendingOrderIds(int limit) {
+        return byId.values().stream()
+                .filter(order -> order.status().isPending())
+                .map(Order::orderId)
+                .limit(limit)
+                .toList();
     }
 
     @Override

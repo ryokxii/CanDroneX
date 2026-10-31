@@ -39,6 +39,16 @@ candronex:
   drone-service:
     url: ${DRONE_SERVICE_URL:http://localhost:8082}
     timeout: ${DRONE_TIMEOUT:2s}
+  slice-service:
+    url: ${SLICE_SERVICE_URL:http://localhost:8083}
+    timeout: ${SLICE_TIMEOUT:2s}
+  service-token:
+    url: ${KEYCLOAK_TOKEN_URL:http://localhost:8081/realms/candronex/protocol/openid-connect/token}
+    client-id: order-service
+    client-secret: ${ORDER_SERVICE_SECRET:}
+  activation:
+    poll-interval: ${ACTIVATION_POLL_INTERVAL:2s}
+    poll-batch: 200
 
 logging:
   pattern:

@@ -21,11 +21,14 @@ public class PlaceOrderService implements PlaceOrderUseCase {
     private final OrderPlacement placement;
     private final OrderRepository orders;
     private final DroneOwnershipPort drones;
+    private final SyncActivationStatusUseCase activations;
 
-    public PlaceOrderService(OrderPlacement placement, OrderRepository orders, DroneOwnershipPort drones) {
+    public PlaceOrderService(OrderPlacement placement, OrderRepository orders, DroneOwnershipPort drones,
+                             SyncActivationStatusUseCase activations) {
         this.placement = placement;
         this.orders = orders;
         this.drones = drones;
+        this.activations = activations;
     }
 
     /**
@@ -51,14 +54,32 @@ public class PlaceOrderService implements PlaceOrderUseCase {
                 .distinct()
                 .forEach(droneId -> verifyOwnership(droneId, command.clientToken()));
 
+        PlaceOrderResult result;
         try {
-            PlaceOrderResult result = placement.place(command, key);
-            log.info("event=order-received orderId={} clientId={} lines={}",
-                    result.order().orderId(), command.clientId(), result.order().orderLines().size());
-            return result;
+            result = placement.place(command, key);
         } catch (DataIntegrityViolationException concurrentReplay) {
             // Violation sans rapport avec la clé d'idempotence : l'erreur remonte.
             return replayOf(command, key).orElseThrow(() -> concurrentReplay);
+        }
+        if (!result.created()) {
+            return result;
+        }
+        log.info("event=order-received orderId={} clientId={} lines={}",
+                result.order().orderId(), command.clientId(), result.order().orderLines().size());
+        return PlaceOrderResult.created(requestActivations(result.order(), command.clientId(), key));
+    }
+
+    /**
+     * La commande est enregistrée : un échec ici ne la fait pas échouer. Les lignes restées
+     * RECEIVED sont reprises par ActivationStatusPoller.
+     */
+    private OrderView requestActivations(OrderView placed, String clientId, IdempotencyKey key) {
+        try {
+            activations.sync(placed.orderId());
+            return orders.findByClientIdAndIdempotencyKey(clientId, key).map(OrderView::from).orElse(placed);
+        } catch (RuntimeException failure) {
+            log.warn("event=activation-requested orderId={} error=deferred", placed.orderId(), failure);
+            return placed;
         }
     }
 

@@ -12,7 +12,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * cache entre les classes de test, il doit donc pointer vers un conteneur qui survit à chacune.
  * Ryuk le supprime à la fin de la JVM.
  */
-@SpringBootTest
+// Pas de tâche planifiée pendant les tests.
+@SpringBootTest(properties = "candronex.activation.poll-interval=1h")
 public abstract class PostgresIntegrationTest {
 
     @ServiceConnection

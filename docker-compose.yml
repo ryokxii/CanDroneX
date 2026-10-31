@@ -116,8 +116,14 @@ services:
       DB_URL: jdbc:postgresql://order-db:5432/order
       DRONE_SERVICE_URL: http://drone-service:8080
       DRONE_TIMEOUT: 2s
+      SLICE_SERVICE_URL: http://slice-service:8080
+      SLICE_TIMEOUT: 2s
+      KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/candronex/protocol/openid-connect/token
+      ORDER_SERVICE_SECRET: ${ORDER_SERVICE_SECRET}
+      ACTIVATION_POLL_INTERVAL: 2s
     depends_on:
       order-db: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
 
   slice-service:
     <<: *service

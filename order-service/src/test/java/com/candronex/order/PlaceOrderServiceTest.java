@@ -6,6 +6,7 @@ import com.candronex.order.application.OrderView;
 import com.candronex.order.application.PlaceOrderCommand;
 import com.candronex.order.application.PlaceOrderResult;
 import com.candronex.order.application.PlaceOrderService;
+import com.candronex.order.application.SyncActivationStatusUseCase;
 import com.candronex.order.domain.DroneNotFoundException;
 import com.candronex.order.domain.DuplicateOrderLineException;
 import com.candronex.order.domain.IdempotencyKeyConflictException;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,6 +41,24 @@ class PlaceOrderServiceTest {
     private InMemoryOrderRepository orders;
     private CatalogFixtures.MutableCatalog catalog;
     private PlaceOrderService service;
+    private final List<UUID> syncedOrders = new ArrayList<>();
+    private boolean sliceServiceDown;
+
+    /** Demande d'activation après la commande : seulement notée ici. */
+    private final SyncActivationStatusUseCase activations = new SyncActivationStatusUseCase() {
+        @Override
+        public void sync(UUID orderId) {
+            if (sliceServiceDown) {
+                throw new IllegalStateException("Slice Service injoignable");
+            }
+            syncedOrders.add(orderId);
+        }
+
+        @Override
+        public List<UUID> pendingOrders() {
+            return List.of();
+        }
+    };
 
     @BeforeEach
     void setUp() {
@@ -51,7 +71,7 @@ class PlaceOrderServiceTest {
 
         OrderPlacement placement = new OrderPlacement(
                 orders, catalog, Clock.fixed(NOW, ZoneOffset.UTC));
-        service = new PlaceOrderService(placement, orders, drones);
+        service = new PlaceOrderService(placement, orders, drones, activations);
     }
 
     private static String tokenOf(String clientId) {
@@ -167,12 +187,32 @@ class PlaceOrderServiceTest {
                 new OrderPlacement(orders, catalog, Clock.fixed(NOW, ZoneOffset.UTC)), orders,
                 (droneId, clientToken) -> {
                     throw new DependencyUnavailableException("Drone Service indisponible", null);
-                });
+                }, activations);
 
         assertThatThrownBy(() -> unavailable.placeOrder(orderFor(CLIENT, KEY, line(DRONE, C2))))
                 .isInstanceOf(DependencyUnavailableException.class);
 
         assertThat(orders.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("une commande créée déclenche la demande d'activation de ses lignes")
+    void createdOrderRequestsActivations() {
+        PlaceOrderResult result = service.placeOrder(orderFor(CLIENT, KEY, line(DRONE, C2)));
+
+        assertThat(syncedOrders).containsExactly(result.order().orderId());
+    }
+
+    @Test
+    @DisplayName("Slice Service injoignable : la commande reste créée, RECEIVED, pour le poller")
+    void orderSurvivesActivationFailure() {
+        sliceServiceDown = true;
+
+        PlaceOrderResult result = service.placeOrder(orderFor(CLIENT, KEY, line(DRONE, C2)));
+
+        assertThat(result.created()).isTrue();
+        assertThat(result.order().status()).isEqualTo("RECEIVED");
+        assertThat(orders.count()).isEqualTo(1);
     }
 
     @Nested
@@ -202,7 +242,7 @@ class PlaceOrderServiceTest {
                     new OrderPlacement(orders, catalog, Clock.fixed(NOW, ZoneOffset.UTC)), orders,
                     (droneId, clientToken) -> {
                         throw new DependencyUnavailableException("Drone Service indisponible", null);
-                    });
+                    }, activations);
 
             PlaceOrderResult replay = droneServiceDown.placeOrder(orderFor(CLIENT, KEY, line(DRONE, C2)));
 
