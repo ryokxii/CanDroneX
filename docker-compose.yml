@@ -114,6 +114,8 @@ services:
     environment:
       <<: *service-env
       DB_URL: jdbc:postgresql://order-db:5432/order
+      DRONE_SERVICE_URL: http://drone-service:8080
+      DRONE_TIMEOUT: 2s
     depends_on:
       order-db: { condition: service_healthy }
 

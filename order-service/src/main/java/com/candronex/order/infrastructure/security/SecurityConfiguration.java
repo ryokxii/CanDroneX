@@ -8,14 +8,13 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 
-/** Tout client authentifié ; chaque requête ne voit que ses propres commandes. */
+/** Tout client authentifié ; une commande ne vise que ses propres drones. */
 @Configuration
 public class SecurityConfiguration {
 
     @Bean
     SecurityFilterChain apiSecurity(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
         return BearerSecurity.build(http, objectMapper, auth -> auth
-                .requestMatchers(HttpMethod.POST, "/api/v1/service-orders").authenticated()
-                .requestMatchers(HttpMethod.GET, "/api/v1/service-orders/*").authenticated());
+                .requestMatchers(HttpMethod.POST, "/api/v1/service-orders").authenticated());
     }
 }

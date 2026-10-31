@@ -36,6 +36,9 @@ candronex:
     jwk-set-uri: ${JWT_JWKS_URI:http://localhost:8081/realms/candronex/protocol/openid-connect/certs}
     issuer: ${JWT_ISSUER:http://localhost:8081/realms/candronex}
     audience: ${JWT_AUDIENCE:candronex-api}
+  drone-service:
+    url: ${DRONE_SERVICE_URL:http://localhost:8082}
+    timeout: ${DRONE_TIMEOUT:2s}
 
 logging:
   pattern:
