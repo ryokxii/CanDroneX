@@ -1,0 +1,55 @@
+openapi: 3.0.1
+info:
+  title: CanDroneX — API B2B (passerelle)
+  version: 1.1.0
+  description: |
+    Contrat exposé aux clients B2B par la passerelle KrakenD. Il ne contient que les routes
+    publiques `/api/v1/**` ; leurs opérations sont celles des contrats de Drone Service et
+    d'Order Service, référencées ici sans copie. Les routes `/internal/v1/**` de Slice Service
+    ne sont pas exposées.
+
+    **Jeton.** Le client obtient un jeton auprès de Keycloak (fourni), flux
+    `client_credentials`, puis le présente dans `Authorization: Bearer <jeton>`. La passerelle
+    valide la signature (JWKS), l'expiration et l'émetteur
+    (`http://localhost:8081/realms/candronex`), puis transmet `Authorization` au microservice,
+    qui revalide le jeton et lit la claim `azp`.
+
+    **Microservice arrêté.** La passerelle répond 503 en `application/problem+json`, avec le
+    même format que les erreurs des microservices.
+
+    **Version.** Majeure dans le chemin (`/api/v1`). Seul un changement incompatible du contrat
+    ouvre `/api/v2` ; `/api/v1` reste alors servie, avec les en-têtes `Deprecation` et
+    `Sunset`, jusqu'à la date de retrait annoncée.
+
+servers:
+  - url: http://localhost:8080
+    description: Passerelle KrakenD, environnement local démarré par docker compose up
+
+security:
+  - oauth2: []
+
+tags:
+  - name: Drones
+    description: UC-02 — Drone Service
+  - name: Commandes
+    description: UC-04 — Order Service
+
+paths:
+  /api/v1/drones:
+    $ref: 'drone-service.yaml#/paths/~1api~1v1~1drones'
+  /api/v1/drones/{droneId}:
+    $ref: 'drone-service.yaml#/paths/~1api~1v1~1drones~1{droneId}'
+  /api/v1/service-orders:
+    $ref: 'order-service.yaml#/paths/~1api~1v1~1service-orders'
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      description: |
+        Jeton JWT émis par Keycloak (fourni), signé RS256. Aucune portée particulière n'est
+        exigée par les routes de la passerelle.
+      flows:
+        clientCredentials:
+          tokenUrl: http://localhost:8081/realms/candronex/protocol/openid-connect/token
+          scopes: {}

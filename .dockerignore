@@ -1,6 +1,10 @@
-target/
+**/target/
 .env
 .git/
 .idea/
 *.iml
-.DS_Store
+**/.DS_Store
+docs/
+keycloak/
+gateway/
+scripts/

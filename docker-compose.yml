@@ -1,53 +1,135 @@
-# Démarrage : docker compose up --build
+# Démarrage : cp .env.example .env && docker compose up --build -d
+# Seuls la passerelle (8080), Keycloak (8081) et Swagger UI (8090) sont publiés.
+
+x-postgres: &postgres
+  image: postgres:16
+  environment: &postgres-env
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  networks: [candronex-net]
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+    interval: 5s
+    timeout: 5s
+    retries: 12
+
+x-service: &service
+  networks: [candronex-net]
+  healthcheck:
+    test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health || exit 1"]
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 40s
+
+x-service-env: &service-env
+  DB_USER: ${POSTGRES_USER}
+  DB_PASSWORD: ${POSTGRES_PASSWORD}
+  JWT_JWKS_URI: http://keycloak:8080/realms/candronex/protocol/openid-connect/certs
+  JWT_ISSUER: http://localhost:8081/realms/candronex
+  SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-demo}
 
 services:
 
-  db:
-    image: postgres:16
-    container_name: candronex-db
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm --http-port=8080
     environment:
-      POSTGRES_DB: candronex
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      # Émetteur (iss) fixe, que le jeton soit obtenu par localhost:8081 ou keycloak:8080.
+      KC_HOSTNAME: http://localhost:8081
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+      CANDRONEX_ADMIN_SECRET: ${CANDRONEX_ADMIN_SECRET}
+      ACCES_SERVICE_SECRET: ${ACCES_SERVICE_SECRET}
+      INSPECTRA_DEMO_SECRET: ${INSPECTRA_DEMO_SECRET}
+      AEROTECH_DEMO_SECRET: ${AEROTECH_DEMO_SECRET}
+      JETON_COURT_SECRET: ${JETON_COURT_SECRET}
+      ORDER_SERVICE_SECRET: ${ORDER_SERVICE_SECRET}
     volumes:
-      - candronex-data:/var/lib/postgresql/data
-    # 5432 non publié : base joignable seulement depuis candronex-net.
-    networks:
-      - candronex-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d candronex"]
-      interval: 5s
-      timeout: 5s
-      retries: 12
-
-  app:
-    build: .
-    container_name: candronex-app
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/candronex
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
-      SERVER_PORT: 8080
-      # OAuth 2.0 : URL publique de l'API (revendication iss) et durée de vie des jetons.
-      CANDRONEX_OAUTH2_ISSUER: ${CANDRONEX_OAUTH2_ISSUER:-http://localhost:8080}
-      CANDRONEX_OAUTH2_ACCESS_TOKEN_TTL: ${CANDRONEX_OAUTH2_ACCESS_TOKEN_TTL:-PT15M}
+      - ./keycloak/realm-candronex.json:/opt/keycloak/data/import/realm-candronex.json:ro
     ports:
-      - "8080:8080"
-    # Flyway doit attendre que PostgreSQL accepte les connexions.
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - candronex-net
+      - "8081:8080"
+    networks: [candronex-net]
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://localhost:8080/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q 'UP' <&3"]
       interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 40s
+      retries: 20
+
+  api-gateway:
+    image: devopsfaith/krakend:2.7
+    volumes:
+      - ./gateway/krakend.json:/etc/krakend/krakend.json:ro
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    networks: [candronex-net]
+    depends_on:
+      keycloak: { condition: service_healthy }
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui:v5.17.14
+    environment:
+      URLS: '[{"url":"/api/gateway.yaml","name":"API B2B (passerelle)"},{"url":"/api/drone-service.yaml","name":"Drone Service"},{"url":"/api/order-service.yaml","name":"Order Service"},{"url":"/api/slice-service.yaml","name":"Slice Service (interne)"}]'
+    volumes:
+      - ./docs/api:/usr/share/nginx/html/api:ro
+    ports:
+      - "8090:8080"
+    networks: [candronex-net]
+
+  drone-db:
+    <<: *postgres
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: drone
+    volumes: [drone-data:/var/lib/postgresql/data]
+
+  order-db:
+    <<: *postgres
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: order
+    volumes: [order-data:/var/lib/postgresql/data]
+
+  slice-db:
+    <<: *postgres
+    environment:
+      <<: *postgres-env
+      POSTGRES_DB: slice
+    volumes: [slice-data:/var/lib/postgresql/data]
+
+  # Pas de "ports:" : les services ne sont joignables que sur candronex-net.
+  drone-service:
+    <<: *service
+    build: { context: ., args: { SERVICE: drone-service } }
+    environment:
+      <<: *service-env
+      DB_URL: jdbc:postgresql://drone-db:5432/drone
+    depends_on:
+      drone-db: { condition: service_healthy }
+
+  order-service:
+    <<: *service
+    build: { context: ., args: { SERVICE: order-service } }
+    environment:
+      <<: *service-env
+      DB_URL: jdbc:postgresql://order-db:5432/order
+    depends_on:
+      order-db: { condition: service_healthy }
+
+  slice-service:
+    <<: *service
+    build: { context: ., args: { SERVICE: slice-service } }
+    environment:
+      <<: *service-env
+      DB_URL: jdbc:postgresql://slice-db:5432/slice
+    depends_on:
+      slice-db: { condition: service_healthy }
 
 volumes:
-  candronex-data:
+  drone-data:
+  order-data:
+  slice-data:
 
 networks:
   candronex-net:

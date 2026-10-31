@@ -1,0 +1,317 @@
+openapi: 3.0.1
+info:
+  title: CanDroneX — Order Service
+  version: 1.1.0
+  description: |
+    Contextes Service Catalog (TMF633) et Order Management (TMF641). Création d'une commande
+    de services de connectivité (UC-04), qui déclenche l'activation de chaque ligne (UC-06).
+
+    **Appels sortants.** `GET /api/v1/drones/{droneId}` vers Drone Service, avec le jeton du
+    client relayé, car la propriété du drone dépend du client. `POST` et `GET
+    /internal/v1/service-activations` vers Slice Service, avec le jeton de service d'Order
+    Service (compte technique `order-service`, flux `client_credentials`), y compris depuis la
+    tâche planifiée qui reprend les activations et lit leur état. Les délais et la
+    réaction aux échecs sont décrits au §4.2 du rapport.
+
+    **Identité du client.** Claim `azp` du jeton, revalidé par le service. La clé
+    d'idempotence est portée par client.
+
+    **Version.** Majeure dans le chemin (`/api/v1`) ; voir le §8.4 du rapport.
+
+servers:
+  - url: http://localhost:8080
+    description: Par la passerelle (seul accès depuis l'hôte)
+  - url: http://order-service:8080
+    description: Réseau Docker interne
+
+security:
+  - oauth2: []
+
+tags:
+  - name: Commandes
+    description: UC-04, déclenchement de UC-06
+
+paths:
+  /api/v1/service-orders:
+    post:
+      tags: [Commandes]
+      summary: Commander les services de connectivité d'un drone
+      operationId: placeServiceOrder
+      description: |
+        Chaque ligne désigne un drone du client et une spécification du catalogue. Toutes les
+        lignes visent le même drone. Les caractéristiques de la spécification sont
+        copiées dans la ligne à la soumission et n'y changent plus, même si l'offre évolue.
+
+        La réponse 201 n'attend pas le résultat de l'activation : les lignes sont `RECEIVED`
+        ou `IN_PROGRESS` et `completedAt` est nul.
+
+        **Idempotence.** Même client, même clé et même contenu : la commande existante est
+        retournée (200), rien n'est créé. Même clé avec un autre contenu : 409. L'ordre des
+        lignes n'entre pas dans la comparaison.
+
+        Le suivi d'une commande est hors périmètre : l'URL de l'en-tête `Location` identifie la
+        commande, mais n'est pas servie.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Choisie par le client, réutilisée à chaque rejeu de la même demande. Portée par client.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+          example: 2b8e6c1a-commande-0001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderRequest'
+            examples:
+              c2EtImagerie:
+                summary: Deux services pour le même drone
+                value:
+                  orderLines:
+                    - droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                      serviceSpecificationId: C2_URLLC
+                    - droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                      serviceSpecificationId: IMAGERY_EMBB
+      responses:
+        '201':
+          description: Commande créée ; l'activation de chaque ligne est demandée en arrière-plan.
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /api/v1/service-orders/4b77d903-1e58-4a6f-8c21-0d93fe4b7a16
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              examples:
+                creee:
+                  value:
+                    orderId: 4b77d903-1e58-4a6f-8c21-0d93fe4b7a16
+                    status: IN_PROGRESS
+                    placedAt: '2026-10-04T18:20:00Z'
+                    completedAt: null
+                    orderLines:
+                      - orderLineId: 0c4f8e21-93a7-4b6d-a1f2-5e7d9b3c8a40
+                        droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                        serviceSpecificationId: C2_URLLC
+                        serviceCharacteristics:
+                          - { name: sst, value: '2' }
+                          - { name: sd, value: '000001' }
+                          - { name: dnn, value: c2 }
+                          - { name: fiveQi, value: '7' }
+                          - { name: arp, value: '2' }
+                          - { name: ambrUplink, value: 20 Mbps }
+                          - { name: ambrDownlink, value: 20 Mbps }
+                        status: IN_PROGRESS
+                      - orderLineId: 5d1b7a93-2f64-4e08-b9c3-a7e2f1d04c86
+                        droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                        serviceSpecificationId: IMAGERY_EMBB
+                        serviceCharacteristics:
+                          - { name: sst, value: '1' }
+                          - { name: sd, value: '000002' }
+                          - { name: dnn, value: imagery }
+                          - { name: fiveQi, value: '9' }
+                          - { name: arp, value: '8' }
+                          - { name: ambrUplink, value: 500 Mbps }
+                          - { name: ambrDownlink, value: 100 Mbps }
+                        status: IN_PROGRESS
+        '200':
+          description: Rejeu d'une commande déjà créée avec la même clé et le même contenu.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Drone inexistant ou appartenant à un autre client — indiscernables.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Clé d'idempotence déjà utilisée pour un contenu différent (`idempotency-key-reused`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                cleReutilisee:
+                  value:
+                    type: https://candronex.ca/problems/idempotency-key-reused
+                    title: Clé d'idempotence déjà utilisée
+                    status: 409
+                    detail: Cette clé a déjà servi pour une commande au contenu différent.
+                    instance: /api/v1/service-orders
+                    correlationId: 7c3e9a15-4f82-4d0b-b6a1-e9d2c5f80347
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          description: Service hors catalogue (`unknown-service-specification`) ou ligne en double (`duplicate-order-line`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: Drone Service indisponible ou délai dépassé ; aucune commande n'est créée.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                droneServiceIndisponible:
+                  value:
+                    type: https://candronex.ca/problems/dependency-unavailable
+                    title: Service indisponible
+                    status: 503
+                    detail: Le service des drones ne répond pas. Réessayez avec la même clé d'idempotence.
+                    instance: /api/v1/service-orders
+                    correlationId: 8e1a4c7d-5b20-4f96-a3e8-1d7c9f0b6e52
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      description: |
+        Jeton JWT émis par Keycloak (fourni), signé RS256, présenté dans
+        `Authorization: Bearer <jeton>`. Aucune portée particulière n'est exigée.
+      flows:
+        clientCredentials:
+          tokenUrl: http://localhost:8081/realms/candronex/protocol/openid-connect/token
+          scopes: {}
+
+  responses:
+    BadRequest:
+      description: Requête mal formée (JSON invalide, champ manquant, UUID mal formé, `Idempotency-Key` absent).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Jeton absent, expiré, mal signé ou émis par un autre émetteur.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: Bearer error="invalid_token"
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnsupportedMediaType:
+      description: Corps qui n'est pas en `application/json`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: Erreur inattendue ; aucun détail technique n'est renvoyé, la cause est journalisée avec le `correlationId`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    OrderRequest:
+      type: object
+      required: [orderLines]
+      properties:
+        orderLines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [droneId, serviceSpecificationId]
+            properties:
+              droneId:
+                type: string
+                format: uuid
+              serviceSpecificationId:
+                type: string
+                description: Spécification du catalogue (TMF633).
+                enum: [C2_URLLC, IMAGERY_EMBB]
+    Order:
+      type: object
+      description: Ni l'identifiant du client ni la clé d'idempotence n'y figurent.
+      required: [orderId, status, placedAt, orderLines]
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: Dérivé de l'état des lignes par OrderStatusPolicy, jamais saisi.
+          enum: [RECEIVED, IN_PROGRESS, COMPLETED, PARTIAL, FAILED, CANCELLED]
+        placedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Nul tant qu'une ligne attend un résultat.
+        orderLines:
+          type: array
+          description: Dans l'ordre de la demande.
+          items:
+            $ref: '#/components/schemas/OrderLine'
+    OrderLine:
+      type: object
+      required: [orderLineId, droneId, serviceSpecificationId, serviceCharacteristics, status]
+      properties:
+        orderLineId:
+          type: string
+          format: uuid
+        droneId:
+          type: string
+          format: uuid
+        serviceSpecificationId:
+          type: string
+          example: C2_URLLC
+        serviceCharacteristics:
+          type: array
+          description: Valeurs commandées, figées à la soumission.
+          items:
+            $ref: '#/components/schemas/ServiceCharacteristic'
+        status:
+          type: string
+          enum: [RECEIVED, IN_PROGRESS, COMPLETED, FAILED, CANCELLED]
+    ServiceCharacteristic:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+          example: sst
+        value:
+          type: string
+          example: '2'
+    Problem:
+      type: object
+      description: RFC 9457. Les membres normalisés, puis l'extension correlationId.
+      required: [type, title, status, detail, instance, correlationId]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        correlationId:
+          type: string
+          format: uuid
