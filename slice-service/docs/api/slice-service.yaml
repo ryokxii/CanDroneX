@@ -1,0 +1,287 @@
+openapi: 3.0.1
+info:
+  title: CanDroneX — Slice Service (API interne)
+  version: 1.1.0
+  description: |
+    Contextes Service Activation (TMF640) et Service Inventory (TMF638). Activation du service
+    de chaque ligne de commande sur le réseau 5G simulé (UC-06).
+
+    **API interne.** Ces routes sont servies sur le réseau Docker interne et ne sont pas
+    déclarées dans la passerelle.
+
+    **Jeton de service.** L'appelant présente un jeton obtenu auprès de Keycloak par le flux
+    `client_credentials` avec son propre compte technique (`order-service`). Slice Service
+    valide la signature, l'expiration et l'émetteur, puis exige `azp = order-service` : tout
+    autre appelant, y compris un client B2B, reçoit 403. Le même jeton sert aux appels faits
+    pendant une requête et à ceux de la tâche planifiée d'Order Service.
+
+    **Activation.** Le `Service` est créé à l'état `PENDING` ; l'appel au réseau se fait en
+    arrière-plan derrière `NetworkProvisioningPort` (`MockOpen5GSAdapter`, latence et taux
+    d'échec configurables). Succès : `ACTIVE`. Échec explicite : `FAILED`. Délai dépassé :
+    `UNCONFIRMED`, issue inconnue et non un échec ; l'état réel est consulté avant toute reprise.
+
+    **Version.** Majeure dans le chemin (`/internal/v1`) ; voir le §8.4 du rapport.
+
+servers:
+  - url: http://slice-service:8080
+    description: Réseau Docker interne seulement, hors passerelle
+
+security:
+  - oauth2: []
+
+tags:
+  - name: Activations
+    description: UC-06
+
+paths:
+  /internal/v1/service-activations:
+    post:
+      tags: [Activations]
+      summary: Demander l'activation du service d'une ligne de commande
+      operationId: requestServiceActivation
+      description: |
+        Appelée par Order Service avec son jeton de service. Répond 202 sans attendre le
+        réseau.
+
+        **Idempotence.** `orderLineId` est unique : une demande rejouée pour la même ligne ne
+        crée pas de deuxième activation et renvoie le service existant (200).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceActivationRequest'
+            examples:
+              c2:
+                value:
+                  orderLineId: 0c4f8e21-93a7-4b6d-a1f2-5e7d9b3c8a40
+                  droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                  characteristics:
+                    - { name: sst, value: '2' }
+                    - { name: sd, value: '000001' }
+                    - { name: dnn, value: c2 }
+                    - { name: fiveQi, value: '7' }
+                    - { name: arp, value: '2' }
+                    - { name: ambrUplink, value: 20 Mbps }
+                    - { name: ambrDownlink, value: 20 Mbps }
+      responses:
+        '202':
+          description: Activation acceptée ; le résultat se lit par `orderLineId`.
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /internal/v1/service-activations?orderLineId=0c4f8e21-93a7-4b6d-a1f2-5e7d9b3c8a40
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceActivation'
+              examples:
+                acceptee:
+                  value:
+                    serviceId: 6a2d9f47-0b1e-4c83-9d5a-e3f7c1b28046
+                    orderLineId: 0c4f8e21-93a7-4b6d-a1f2-5e7d9b3c8a40
+                    droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                    state: PENDING
+                    acceptedAt: '2026-10-04T18:20:01Z'
+                    activatedAt: null
+        '200':
+          description: Rejeu pour une ligne déjà reçue ; le service existant est renvoyé.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceActivation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Activations]
+      summary: Consulter l'état du service activé pour une ligne de commande
+      operationId: findServiceActivationByOrderLine
+      description: |
+        Appelée par Order Service avec son propre `orderLineId` : il n'a pas à conserver le
+        `serviceId`, et peut connaître le sort d'une ligne même si la réponse au POST ne lui est
+        jamais parvenue, avant toute reprise. `orderLineId` étant unique, la recherche renvoie au
+        plus un service. Aucun appel ne remonte vers Order Service.
+      parameters:
+        - name: orderLineId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 0c4f8e21-93a7-4b6d-a1f2-5e7d9b3c8a40
+      responses:
+        '200':
+          description: Le service et son état courant.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceActivation'
+              examples:
+                actif:
+                  value:
+                    serviceId: 6a2d9f47-0b1e-4c83-9d5a-e3f7c1b28046
+                    orderLineId: 0c4f8e21-93a7-4b6d-a1f2-5e7d9b3c8a40
+                    droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                    state: ACTIVE
+                    acceptedAt: '2026-10-04T18:20:01Z'
+                    activatedAt: '2026-10-04T18:20:03Z'
+                delaiDepasse:
+                  summary: Le réseau n'a pas répondu à temps — issue inconnue, pas un échec
+                  value:
+                    serviceId: 6a2d9f47-0b1e-4c83-9d5a-e3f7c1b28046
+                    orderLineId: 0c4f8e21-93a7-4b6d-a1f2-5e7d9b3c8a40
+                    droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                    state: UNCONFIRMED
+                    acceptedAt: '2026-10-04T18:20:01Z'
+                    activatedAt: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Aucune activation pour cette ligne.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      description: |
+        Jeton de service JWT émis par Keycloak au compte technique `order-service`, signé
+        RS256, présenté dans `Authorization: Bearer <jeton>`. Seul `azp = order-service` est
+        accepté.
+      flows:
+        clientCredentials:
+          tokenUrl: http://localhost:8081/realms/candronex/protocol/openid-connect/token
+          scopes: {}
+
+  responses:
+    BadRequest:
+      description: Requête mal formée, refusée avant d'atteindre le domaine.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Jeton valide, mais l'appelant n'est pas Order Service (`azp` différent de `order-service`).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Jeton absent, expiré, mal signé ou émis par un autre émetteur.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: Bearer error="invalid_token"
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnsupportedMediaType:
+      description: Corps qui n'est pas en `application/json`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: Erreur inattendue ; aucun détail technique n'est renvoyé, la cause est journalisée avec le `correlationId`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    ServiceActivationRequest:
+      type: object
+      required: [orderLineId, droneId, characteristics]
+      properties:
+        orderLineId:
+          type: string
+          format: uuid
+          description: Ligne de commande à activer ; unique côté Slice Service.
+        droneId:
+          type: string
+          format: uuid
+        characteristics:
+          type: array
+          minItems: 1
+          description: Caractéristiques figées de la ligne (sst, sd, dnn, fiveQi, arp, ambrUplink, ambrDownlink).
+          items:
+            $ref: '#/components/schemas/ServiceCharacteristic'
+    ServiceActivation:
+      type: object
+      description: L'agrégat Service du contexte Service Activation. Aucune identité réseau n'y figure.
+      required: [serviceId, orderLineId, droneId, state, acceptedAt]
+      properties:
+        serviceId:
+          type: string
+          format: uuid
+        orderLineId:
+          type: string
+          format: uuid
+        droneId:
+          type: string
+          format: uuid
+        state:
+          type: string
+          description: |
+            PENDING : activation en cours. ACTIVE : confirmée par le réseau. FAILED : refusée par
+            le réseau. UNCONFIRMED : délai dépassé, issue inconnue ; l'état réel est consulté
+            avant toute reprise.
+          enum: [PENDING, ACTIVE, FAILED, UNCONFIRMED]
+        acceptedAt:
+          type: string
+          format: date-time
+        activatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Nul tant que le service n'est pas ACTIVE.
+    ServiceCharacteristic:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+          example: sst
+        value:
+          type: string
+          example: '2'
+    Problem:
+      type: object
+      description: RFC 9457. Les membres normalisés, puis l'extension correlationId.
+      required: [type, title, status, detail, instance, correlationId]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        correlationId:
+          type: string
+          format: uuid

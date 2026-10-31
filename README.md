@@ -85,8 +85,14 @@ final se lit dans les journaux.
 
 ## Contrats OpenAPI
 
-Swagger UI : <http://localhost:8090>. Les contrats sont dans `docs/api/` : `gateway.yaml`
-(contrat B2B), `drone-service.yaml`, `order-service.yaml`, `slice-service.yaml` (interne).
+Swagger UI : <http://localhost:8090>. Les contrats de référence sont dans `docs/api/` :
+`gateway.yaml` (contrat B2B), `drone-service.yaml`, `order-service.yaml`, `slice-service.yaml`
+(interne). Chaque service en garde une copie identique dans `<service>/docs/api/` ; après une
+modification d'un contrat, recopiez-le et vérifiez :
+
+```bash
+for s in drone-service order-service slice-service; do cmp docs/api/$s.yaml $s/docs/api/$s.yaml; done
+```
 
 ## Journaux
 
@@ -146,7 +152,7 @@ order-service/   UC-04 — catalogue (TMF633), commande (TMF641), appels à Dron
 slice-service/   UC-06 — activation (TMF640), inventaire (TMF638), réseau simulé
 gateway/         configuration KrakenD
 keycloak/        realm candronex importé au démarrage
-docs/api/        contrats OpenAPI 3.0.1
+docs/api/        contrats OpenAPI 3.0.1 de référence (passerelle et trois services)
 load-tests/      scénario k6 et calcul du P95
 scripts/         démonstration et mesure
 ```
