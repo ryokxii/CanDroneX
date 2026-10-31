@@ -36,6 +36,15 @@ candronex:
     jwk-set-uri: ${JWT_JWKS_URI:http://localhost:8081/realms/candronex/protocol/openid-connect/certs}
     issuer: ${JWT_ISSUER:http://localhost:8081/realms/candronex}
     audience: ${JWT_AUDIENCE:candronex-api}
+  network:
+    adapter: ${NETWORK_ADAPTER:mock}
+    mock:
+      latency: ${MOCK_LATENCY_MS:1200}
+      failure-rate: ${MOCK_FAILURE_RATE:0.1}
+      timeout-rate: ${MOCK_TIMEOUT_RATE:0.05}
+      timeout: ${MOCK_TIMEOUT:5s}
+  activation:
+    recheck-interval: ${ACTIVATION_RECHECK_INTERVAL:10s}
 
 logging:
   pattern:

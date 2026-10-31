@@ -125,6 +125,11 @@ services:
     environment:
       <<: *service-env
       DB_URL: jdbc:postgresql://slice-db:5432/slice
+      NETWORK_ADAPTER: mock
+      MOCK_LATENCY_MS: ${MOCK_LATENCY_MS:-1200}
+      MOCK_FAILURE_RATE: ${MOCK_FAILURE_RATE:-0.1}
+      MOCK_TIMEOUT_RATE: ${MOCK_TIMEOUT_RATE:-0.05}
+      MOCK_TIMEOUT: 5s
     depends_on:
       slice-db: { condition: service_healthy }
 
