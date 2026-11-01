@@ -1,0 +1,271 @@
+openapi: 3.0.1
+info:
+  title: CanDroneX — Drone Service
+  version: 1.1.0
+  description: |
+    Contexte Drone Management. Enregistrement d'un drone et de son identité réseau (UC-02),
+    consultation des drones du client. Aussi appelé par Order Service, avec le jeton du client
+    relayé, pour vérifier qu'un drone existe et appartient au client (UC-04).
+
+    **Identité du client.** Claim `azp` du jeton, revalidé par le service (signature JWKS,
+    expiration, émetteur). Une ressource d'un autre client répond comme une ressource
+    inexistante (404).
+
+    **Données protégées.** L'IMSI et l'ICCID sont reçus et conservés ici seulement. Ils ne sont
+    jamais renvoyés, ni dans une réponse ni dans une erreur.
+
+    **Version.** Majeure dans le chemin (`/api/v1`) ; voir le §8.4 du rapport.
+
+servers:
+  - url: http://localhost:8080
+    description: Par la passerelle (seul accès depuis l'hôte)
+  - url: http://drone-service:8080
+    description: Réseau Docker interne (appels d'Order Service)
+
+security:
+  - oauth2: []
+
+tags:
+  - name: Drones
+    description: UC-02 et vérification du drone pour UC-04
+
+paths:
+  /api/v1/drones:
+    post:
+      tags: [Drones]
+      summary: Enregistrer un drone et son identité réseau
+      operationId: registerDrone
+      description: |
+        Le `droneId` est un UUID généré par le service ; le client ne le fournit pas.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DroneRequest'
+            examples:
+              esim:
+                summary: Drone équipé d'une eSIM
+                value:
+                  imsi: '302720123456789'
+                  iccid: '8999700000000010239'
+                  simType: ESIM
+      responses:
+        '201':
+          description: Drone enregistré.
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /api/v1/drones/9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Drone'
+              examples:
+                enregistre:
+                  value:
+                    droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                    status: REGISTERED
+                    registeredAt: '2026-10-04T18:15:40Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: IMSI ou ICCID déjà associé à un drone, tous clients confondus (`duplicate-imsi`, `duplicate-iccid`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                imsiEnDouble:
+                  value:
+                    type: https://candronex.ca/problems/duplicate-imsi
+                    title: IMSI déjà enregistré
+                    status: 409
+                    detail: Cet IMSI est déjà associé à un drone.
+                    instance: /api/v1/drones
+                    correlationId: 3d6f1b9e-2c47-4a8e-b51d-7e0a9c2f4b13
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          description: Identité réseau refusée par le domaine (`invalid-network-identity`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                imsiHorsFormat:
+                  value:
+                    type: https://candronex.ca/problems/invalid-network-identity
+                    title: Identité réseau invalide
+                    status: 422
+                    detail: L'IMSI doit comporter exactement 15 chiffres.
+                    instance: /api/v1/drones
+                    correlationId: 5a90c3e1-7d24-4b6f-8e13-c2f4a9d07b58
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Drones]
+      summary: Lister les drones du client
+      operationId: listDrones
+      responses:
+        '200':
+          description: Les drones du client du jeton, et eux seuls. Tableau vide s'il n'en a aucun.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Drone'
+              examples:
+                unDrone:
+                  value:
+                    - droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                      status: REGISTERED
+                      registeredAt: '2026-10-04T18:15:40Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/drones/{droneId}:
+    get:
+      tags: [Drones]
+      summary: Consulter un drone et son statut
+      operationId: getDrone
+      description: |
+        Aussi appelée par Order Service avant de créer une commande, avec le jeton du client
+        relayé : 200 si le drone existe et appartient au client, 404 sinon.
+      parameters:
+        - name: droneId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+      responses:
+        '200':
+          description: Le drone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Drone'
+              examples:
+                enregistre:
+                  value:
+                    droneId: 9f1c4e2a-7b3d-4c58-9e10-2f6b8a1d5c74
+                    status: REGISTERED
+                    registeredAt: '2026-10-04T18:15:40Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      description: |
+        Jeton JWT émis par Keycloak (fourni), signé RS256, présenté dans
+        `Authorization: Bearer <jeton>`. Aucune portée particulière n'est exigée.
+      flows:
+        clientCredentials:
+          tokenUrl: http://localhost:8081/realms/candronex/protocol/openid-connect/token
+          scopes: {}
+
+  responses:
+    BadRequest:
+      description: Requête mal formée, refusée avant d'atteindre le domaine.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Jeton absent, expiré, mal signé ou émis par un autre émetteur.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+            example: Bearer error="invalid_token"
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Ressource inexistante ou appartenant à un autre client — indiscernables.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnsupportedMediaType:
+      description: Corps qui n'est pas en `application/json`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: Erreur inattendue ; aucun détail technique n'est renvoyé, la cause est journalisée avec le `correlationId`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    DroneRequest:
+      type: object
+      required: [imsi, iccid, simType]
+      properties:
+        imsi:
+          type: string
+          pattern: '^[0-9]{15}$'
+          description: Identité d'abonné (MCC + MNC + MSIN). Jamais renvoyée par l'API.
+          example: '302720123456789'
+        iccid:
+          type: string
+          pattern: '^89[0-9]{17,18}$'
+          description: Numéro du support (SIM ou eSIM), UIT-T E.118, chiffre de contrôle de Luhn. Jamais renvoyé par l'API.
+          example: '8999700000000010239'
+        simType:
+          type: string
+          enum: [SIM, ESIM]
+    Drone:
+      type: object
+      description: Le droneId est généré par le service. L'identité réseau n'est jamais renvoyée.
+      required: [droneId, status, registeredAt]
+      properties:
+        droneId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [REGISTERED, RETIRED]
+        registeredAt:
+          type: string
+          format: date-time
+    Problem:
+      type: object
+      description: RFC 9457. Les membres normalisés, puis l'extension correlationId.
+      required: [type, title, status, detail, instance, correlationId]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        correlationId:
+          type: string
+          format: uuid

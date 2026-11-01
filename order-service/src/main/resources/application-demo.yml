@@ -1,0 +1,4 @@
+# Profil demo : ajoute le jeu de données de démonstration (R__donnees_demo.sql).
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/demo

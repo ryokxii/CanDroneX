@@ -1,0 +1,66 @@
+package com.candronex.drone.infrastructure.persistence;
+
+import com.candronex.drone.domain.Drone;
+import com.candronex.drone.domain.DroneStatus;
+import com.candronex.drone.domain.NetworkIdentity;
+import com.candronex.drone.domain.SimType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+import java.time.Instant;
+import java.util.UUID;
+
+/** Correspondance relationnelle de l'agrégat Drone ; ne sort jamais de l'adaptateur. */
+@Entity
+@Table(schema = "drone", name = "drones")
+class DroneEntity {
+
+    @Id
+    @Column(name = "drone_id", nullable = false, updatable = false)
+    private UUID droneId;
+
+    @Column(name = "client_id", nullable = false, updatable = false, length = 64)
+    private String clientId;
+
+    @Column(name = "imsi", nullable = false, length = 15)
+    private String imsi;
+
+    @Column(name = "iccid", nullable = false, length = 20)
+    private String iccid;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "sim_type", nullable = false, length = 8)
+    private SimType simType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 16)
+    private DroneStatus status;
+
+    @Column(name = "registered_at", nullable = false)
+    private Instant registeredAt;
+
+    /** Requis par l'ORM. */
+    protected DroneEntity() {
+    }
+
+    static DroneEntity from(Drone drone) {
+        DroneEntity entity = new DroneEntity();
+        entity.droneId = drone.droneId();
+        entity.clientId = drone.clientId();
+        entity.imsi = drone.networkIdentity().imsi().value();
+        entity.iccid = drone.networkIdentity().iccid().value();
+        entity.simType = drone.networkIdentity().simType();
+        entity.status = drone.status();
+        entity.registeredAt = drone.registeredAt();
+        return entity;
+    }
+
+    Drone toDomain() {
+        return Drone.restore(droneId, clientId,
+                NetworkIdentity.of(imsi, iccid, simType), status, registeredAt);
+    }
+}
