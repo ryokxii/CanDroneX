@@ -2,7 +2,7 @@
 # Mesure du §10.4 : débit par la passerelle (k6) puis P95 du délai d'activation (slice_db).
 # Prérequis : docker compose up -d --wait, avec le mock de mesure, par exemple :
 #   MOCK_FAILURE_RATE=0.02 MOCK_TIMEOUT_RATE=0.01 docker compose up -d --wait
-# Usage : scripts/mesurer-performance.sh [RATE] [RAMP] [STEADY]   (défaut : 600 1m 5m)
+# Usage : load-tests/mesurer-performance.sh [RATE] [RAMP] [STEADY]   (défaut : 600 1m 5m)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ENV_FILE=${ENV_FILE:-.env}

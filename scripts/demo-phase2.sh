@@ -85,10 +85,14 @@ verifier "sans Idempotency-Key" 400 "$(code -X POST $GW/api/v1/service-orders -H
   -d "$COMMANDE")"
 
 echo "5) UC-06 — activation par le réseau simulé (parcours dans les journaux)"
-sleep "${ATTENTE:-6}"
+# Délai dépassé (5 s) puis findStatus (toutes les 10 s) : jusqu'à ~20 s.
+for _ in $(seq "${ATTENTE:-25}"); do
+  ETAT=$(compose logs --no-color order-service | grep "event=order-status orderId=$ORDER" | tail -1 | sed -E 's/.*state=([A-Z_]+).*/\1/')
+  [[ $ETAT == COMPLETED || $ETAT == PARTIAL || $ETAT == FAILED ]] && break
+  sleep 1
+done
 [[ -n "$ORDER" ]] && compose logs --no-color order-service | grep "orderId=$ORDER" \
   | sed -E 's/correlationId=[^ ]+ //' | cut -c1-190
-ETAT=$(compose logs --no-color order-service | grep "event=order-status orderId=$ORDER" | tail -1 | sed -E 's/.*state=([A-Z_]+).*/\1/')
 verifier "commande terminée (COMPLETED ou PARTIAL)" ok "$([[ $ETAT == COMPLETED || $ETAT == PARTIAL ]] && echo ok || echo "$ETAT")"
 
 echo; [[ $ECHECS -eq 0 ]] && echo "Tous les cas sont conformes." || { echo "$ECHECS cas non conformes."; exit 1; }

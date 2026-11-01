@@ -70,7 +70,7 @@ services:
   swagger-ui:
     image: swaggerapi/swagger-ui:v5.17.14
     environment:
-      URLS: '[{"url":"/api/gateway.yaml","name":"API B2B (passerelle)"},{"url":"/api/drone-service.yaml","name":"Drone Service"},{"url":"/api/order-service.yaml","name":"Order Service"},{"url":"/api/slice-service.yaml","name":"Slice Service (interne)"}]'
+      URLS: '[{"url":"/api/gateway.yaml","name":"API B2B"},{"url":"/api/drone-service.yaml","name":"Drone Service"},{"url":"/api/order-service.yaml","name":"Order Service"},{"url":"/api/slice-service.yaml","name":"Slice Service interne"}]'
     volumes:
       - ./docs/api:/usr/share/nginx/html/api:ro
     ports:

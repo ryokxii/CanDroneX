@@ -1,6 +1,6 @@
 // Mesure du §10.4 : 1 min de montée, puis 5 min à 600 opérations/s, par la passerelle.
 // 60 % de consultations, 30 % de commandes, 10 % d'enregistrements de drones.
-// Lancé par scripts/mesurer-performance.sh ; les secrets viennent de l'environnement.
+// Lancé par load-tests/mesurer-performance.sh ; les secrets viennent de l'environnement.
 import http from 'k6/http';
 import exec from 'k6/execution';
 import { check } from 'k6';
